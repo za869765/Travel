@@ -71,7 +71,7 @@
     <header>
         <h1>差旅明細整理系統</h1>
         <p>將會計室mail的 旅費彙整表.xls 檔案上傳 → 選擇衛生所 → 查看明細與個人小計 → 下載 Excel</p>
-        <p style="font-size:12px; margin-top:4px; text-align:right; font-weight:bold;">v6.2</p>
+        <p style="font-size:12px; margin-top:4px; text-align:right; font-weight:bold;">v6.3</p>
         <p style="font-size:12px; text-align:right; margin-top:6px; color:#ff4444; font-weight:600;">免責聲明：本工具僅供參考，請自行確認內容。</p>
     </header>
 
@@ -157,15 +157,19 @@ const OFFICE_CODE_MAP = {
 };
 // 反向查詢表：區名→完整衛生所名（啟動時建立）
 const OFFICE_NAME_MAP = {};
+// 排序用：衛生所名→順序索引；顯示用：衛生所名→Z代碼
+const OFFICE_ORDER = {};
+const OFFICE_CODE_REVERSE = {};
 (function() {
-    Object.values(OFFICE_CODE_MAP).forEach(full => {
-        // 「佳里區衛生所」→ 佳里區, 佳里
+    Object.entries(OFFICE_CODE_MAP).forEach(([code, full], idx) => {
         const m = full.match(/([\u4e00-\u9fff]+[區鄉市])衛生所/);
         if (m) {
             OFFICE_NAME_MAP[m[1]] = full;                     // 佳里區→佳里區衛生所
             OFFICE_NAME_MAP[m[1].replace(/[區鄉市]$/, '')] = full; // 佳里→佳里區衛生所
         }
         OFFICE_NAME_MAP[full] = full;
+        OFFICE_ORDER[full] = idx;
+        OFFICE_CODE_REVERSE[full] = code.toUpperCase();
     });
 })();
 
@@ -1003,7 +1007,8 @@ function processFile(file) {
             const personList = [...Object.values(personMap), ...unknownList].sort((a, b) => a.office.localeCompare(b.office));
 
             // 衛生所清單
-            const offices = [...new Set(validRecords.map(r => r.office))].filter(isValidOffice).sort();
+            const offices = [...new Set(validRecords.map(r => r.office))].filter(isValidOffice)
+                .sort((a, b) => (OFFICE_ORDER[a] ?? 999) - (OFFICE_ORDER[b] ?? 999));
             const overtimeCount = validRecords.filter(r => r.type === '加班費').length;
             const grandTotal = validRecords.reduce((s, r) => s + r.amount, 0);
 
@@ -1064,7 +1069,10 @@ function showResult() {
 
     const sel = document.getElementById('officeSelect');
     sel.innerHTML = '<option value="">-- 全部衛生所 --</option>';
-    r.offices.forEach(o => { sel.innerHTML += `<option value="${o}">${o}</option>`; });
+    r.offices.forEach(o => {
+        const code = OFFICE_CODE_REVERSE[o] ? OFFICE_CODE_REVERSE[o] + ' ' : '';
+        sel.innerHTML += `<option value="${o}">${code}${o}</option>`;
+    });
 
     // 預設選擇：上次使用的衛生所 > 佳里區衛生所 > 全部
     const lastOffice = localStorage.getItem('lastOffice');
