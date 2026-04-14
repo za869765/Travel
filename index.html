@@ -60,7 +60,7 @@
     <header>
         <h1>差旅明細整理系統</h1>
         <p>上傳 XLS 旅費彙整表 → 選擇衛生所 → 查看明細與個人小計 → 下載 Excel</p>
-        <p style="opacity:0.6; font-size:12px; margin-top:4px;">v4.0 (2026-04-14)</p>
+        <p style="opacity:0.6; font-size:12px; margin-top:4px;">v4.1 (2026-04-14)</p>
     </header>
 
     <div class="card" id="uploadCard">
@@ -681,15 +681,20 @@ function processFile(file) {
             // 過濾無效衛生所名稱
             const validRecords = allRecords.filter(r => isValidOffice(r.office));
 
-            // 個人小計（只統計有姓名的）
+            // 個人小計：有姓名的合併，無姓名的逐筆列出
             const personMap = {};
-            validRecords.filter(r => r.person).forEach(r => {
-                const key = r.office + '|' + r.person;
-                if (!personMap[key]) personMap[key] = { office: r.office, person: r.person, travelCount: 0 };
-                personMap[key][r.type] = (personMap[key][r.type] || 0) + r.amount;
-                if (r.type === '差旅費') personMap[key].travelCount++;
+            const unknownList = [];
+            validRecords.forEach(r => {
+                if (r.person) {
+                    const key = r.office + '|' + r.person;
+                    if (!personMap[key]) personMap[key] = { office: r.office, person: r.person, travelCount: 0 };
+                    personMap[key][r.type] = (personMap[key][r.type] || 0) + r.amount;
+                    if (r.type === '差旅費') personMap[key].travelCount++;
+                } else {
+                    unknownList.push({ office: r.office, person: `(${r.sheet})`, travelCount: r.type === '差旅費' ? 1 : 0, [r.type]: r.amount, _unknown: true });
+                }
             });
-            const personList = Object.values(personMap).sort((a, b) => a.office.localeCompare(b.office));
+            const personList = [...Object.values(personMap), ...unknownList].sort((a, b) => a.office.localeCompare(b.office));
 
             // 衛生所清單
             const offices = [...new Set(validRecords.map(r => r.office))].filter(isValidOffice).sort();
