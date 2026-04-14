@@ -71,7 +71,7 @@
     <header>
         <h1>差旅明細整理系統</h1>
         <p>將會計室mail的 旅費彙整表.xls 檔案上傳 → 選擇衛生所 → 查看明細與個人小計 → 下載 Excel</p>
-        <p style="font-size:12px; margin-top:4px; text-align:right; font-weight:bold;">v5.9</p>
+        <p style="font-size:12px; margin-top:4px; text-align:right; font-weight:bold;">v6.0</p>
         <p style="font-size:12px; text-align:right; margin-top:6px; color:#ff4444; font-weight:600;">免責聲明：本工具僅供參考，請自行確認內容。</p>
     </header>
 
@@ -157,8 +157,13 @@ const OFFICE_CODE_MAP = {
 };
 function resolveOffice(name) {
     if (!name) return name;
-    const key = name.trim().toLowerCase();
-    return OFFICE_CODE_MAP[key] || name;
+    // 去除中文字間多餘空格（如「北 區衛生所」→「北區衛生所」）
+    let clean = name.trim().replace(/\s+/g, '');
+    const key = clean.toLowerCase();
+    if (OFFICE_CODE_MAP[key]) return OFFICE_CODE_MAP[key];
+    // 若清理後含衛生所則回傳清理版
+    if (clean.includes('衛生所')) return clean;
+    return name.trim();
 }
 
 // ===== 上傳處理 =====
