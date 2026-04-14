@@ -58,7 +58,7 @@
     <header>
         <h1>差旅明細整理系統</h1>
         <p>上傳 XLS 旅費彙整表 → 選擇衛生所 → 查看明細與個人小計 → 下載 Excel</p>
-        <p style="opacity:0.6; font-size:12px; margin-top:4px;">v3.4 (2026-04-14)</p>
+        <p style="opacity:0.6; font-size:12px; margin-top:4px;">v3.5 (2026-04-14)</p>
     </header>
 
     <div class="card" id="uploadCard">
@@ -655,8 +655,9 @@ function processFile(file) {
             const personMap = {};
             validRecords.forEach(r => {
                 const key = r.office + '|' + r.person;
-                if (!personMap[key]) personMap[key] = { office: r.office, person: r.person };
+                if (!personMap[key]) personMap[key] = { office: r.office, person: r.person, travelCount: 0 };
                 personMap[key][r.type] = (personMap[key][r.type] || 0) + r.amount;
+                if (r.type === '差旅費') personMap[key].travelCount++;
             });
             const personList = Object.values(personMap).filter(p => p.person).sort((a, b) => a.office.localeCompare(b.office));
 
@@ -759,6 +760,7 @@ function renderPersonTable(filterOffice) {
     feeTypes.forEach(t => gt[t] = 0);
 
     const officeCol = filterOffice ? '' : '<th>衛生所</th>';
+    let totalTravelCount = 0;
     let prows = data.map(p => {
         let rowTotal = 0;
         let cells = '';
@@ -768,16 +770,18 @@ function renderPersonTable(filterOffice) {
             rowTotal += v;
             cells += `<td class="text-right">${v ? v.toLocaleString() : '-'}</td>`;
         });
-        return `<tr>${filterOffice ? '' : `<td>${p.office}</td>`}<td>${p.person}</td>${cells}<td class="text-right">${rowTotal.toLocaleString()}</td></tr>`;
+        const tc = p.travelCount || 0;
+        totalTravelCount += tc;
+        return `<tr>${filterOffice ? '' : `<td>${p.office}</td>`}<td>${p.person}</td>${cells}<td class="text-right">${rowTotal.toLocaleString()}</td><td class="text-right">${tc || '-'}</td></tr>`;
     }).join('');
 
     let grandTotal = Object.values(gt).reduce((s, v) => s + v, 0);
     let gtCells = feeTypes.map(t => `<td class="text-right">${gt[t].toLocaleString()}</td>`).join('');
 
     document.getElementById('personDetail').innerHTML = `
-        <table><tr>${officeCol}<th>姓名</th>${feeTypes.map(t => `<th>${t}</th>`).join('')}<th>總計</th></tr>
+        <table><tr>${officeCol}<th>姓名</th>${feeTypes.map(t => `<th>${t}</th>`).join('')}<th>總計</th><th>差旅單</th></tr>
         ${prows}
-        <tr class="total-row">${filterOffice ? '' : '<td></td>'}<td>總計 (${data.length} 人)</td>${gtCells}<td class="text-right">${grandTotal.toLocaleString()}</td></tr></table>`;
+        <tr class="total-row">${filterOffice ? '' : '<td></td>'}<td>總計 (${data.length} 人)</td>${gtCells}<td class="text-right">${grandTotal.toLocaleString()}</td><td class="text-right">${totalTravelCount}</td></tr></table>`;
 }
 
 // ===== 下載 Excel =====
@@ -801,10 +805,10 @@ function downloadExcel() {
 
     // === 區塊2: 個人小計 ===
     data.push(['個人小計']);
-    data.push(['姓名', ...feeTypes, '總計']);
+    data.push(['姓名', ...feeTypes, '總計', '差旅單']);
     personData.forEach(p => {
         const vals = feeTypes.map(t => p[t] || 0);
-        data.push([p.person, ...vals, vals.reduce((s, v) => s + v, 0)]);
+        data.push([p.person, ...vals, vals.reduce((s, v) => s + v, 0), p.travelCount || 0]);
     });
     data.push([]);
 
