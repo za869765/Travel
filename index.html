@@ -58,7 +58,7 @@
     <header>
         <h1>差旅明細整理系統</h1>
         <p>上傳 XLS 旅費彙整表 → 選擇衛生所 → 查看明細與個人小計 → 下載 Excel</p>
-        <p style="opacity:0.6; font-size:12px; margin-top:4px;">v3.3 (2026-04-14)</p>
+        <p style="opacity:0.6; font-size:12px; margin-top:4px;">v3.4 (2026-04-14)</p>
     </header>
 
     <div class="card" id="uploadCard">
@@ -174,9 +174,18 @@ function resetPage() {
 }
 
 // ===== 姓名拆分 =====
+function cleanPersonName(s) {
+    if (!s) return '';
+    s = s.trim();
+    s = s.replace(/^\d{1,2}[\/.]\d{1,2}日?\s*/, ''); // 去日期 9/24, 11/01, 12.14
+    s = s.replace(/^\$\d+(\.\d+)?\s*/, '');            // 去金額 $157
+    if (/^\d+(\.\d+)?$/.test(s)) return '';             // 純數字不是姓名
+    return s.trim();
+}
+
 function splitPersons(personStr, totalAmount) {
     if (!personStr || !personStr.trim()) return [{ name: '', amount: totalAmount }];
-    let text = personStr.trim().replace(/^\d+\/\d+\s*/, ''); // 移除前面日期
+    let text = cleanPersonName(personStr);
 
     // 用 + 分割
     const parts = text.split(/[+＋]/);
@@ -406,9 +415,7 @@ function extractOvertimeSummary(sheet, sheetName, fileLabel) {
     }
     let feeType = '加班費';
     if (purpose.includes('差旅') || purpose.includes('旅費')) feeType = '差旅費';
-    else if (purpose.includes('誤餐')) feeType = '誤餐費';
-    else if (purpose.includes('醫護')) feeType = '醫護費用';
-    else if (purpose.includes('宣導') || purpose.includes('郵簡')) feeType = '業務費';
+    else if (purpose.includes('誤餐') || purpose.includes('醫護') || purpose.includes('宣導') || purpose.includes('郵簡')) feeType = '其他費用';
 
     // 智慧偵測欄位
     let officeCol = 1, amountCol = 2, personCol = -1, startRow = 2;
@@ -747,7 +754,7 @@ function renderPersonTable(filterOffice) {
     document.getElementById('personCard').style.display = 'block';
     document.getElementById('personTitle').textContent = filterOffice ? `👤 ${filterOffice} 個人小計` : '👤 全部個人小計';
 
-    const feeTypes = ['差旅費', '加班費', '誤餐費', '醫護費用'];
+    const feeTypes = ['差旅費', '加班費', '其他費用'];
     let gt = {};
     feeTypes.forEach(t => gt[t] = 0);
 
@@ -778,7 +785,7 @@ function downloadExcel() {
     if (!resultData) return;
     const office = document.getElementById('officeSelect').value;
     const records = office ? resultData.allRecords.filter(r => r.office === office) : resultData.allRecords;
-    const feeTypes = ['差旅費', '加班費', '誤餐費', '醫護費用'];
+    const feeTypes = ['差旅費', '加班費', '其他費用'];
     const personData = office ? resultData.personList.filter(p => p.office === office) : resultData.personList;
     const otRecords = records.filter(r => r.type === '加班費');
 
