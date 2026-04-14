@@ -747,61 +747,56 @@ function downloadExcel() {
     if (!resultData) return;
     const office = document.getElementById('officeSelect').value;
     const records = office ? resultData.allRecords.filter(r => r.office === office) : resultData.allRecords;
-
-    const wb = XLSX.utils.book_new();
-
-    // Sheet1: 選擇的衛生所明細
-    const title1 = office || '全部';
-    const s1data = [
-        [office ? `${office} 明細` : '全部出差明細'],
-        [],
-        ['分頁', '類型', '衛生所', '姓名', '金額', '事由'],
-        ...records.map(r => [r.sheet, r.type, r.office, r.person, r.amount, r.reason]),
-        ['', '', '', '合計', records.reduce((s, r) => s + r.amount, 0), '']
-    ];
-    const ws1 = XLSX.utils.aoa_to_sheet(s1data);
-    XLSX.utils.book_append_sheet(wb, ws1, (office || '全部明細').substring(0, 31));
-
-    // Sheet2: 個人小計
     const feeTypes = ['差旅費', '加班費', '誤餐費', '醫護費用'];
     const personData = office ? resultData.personList.filter(p => p.office === office) : resultData.personList;
-    const s2data = [
-        ['個人小計'],
-        [],
-        ['衛生所', '姓名', ...feeTypes, '總計'],
-        ...personData.map(p => {
-            const vals = feeTypes.map(t => p[t] || 0);
-            return [p.office, p.person, ...vals, vals.reduce((s, v) => s + v, 0)];
-        })
-    ];
-    const ws2 = XLSX.utils.aoa_to_sheet(s2data);
-    XLSX.utils.book_append_sheet(wb, ws2, '個人小計');
+    const otRecords = records.filter(r => r.type === '加班費');
 
-    // Sheet3: 全部明細
-    if (office) {
-        const s3data = [
-            ['全部出差明細'],
-            [],
-            ['分頁', '類型', '衛生所', '姓名', '金額', '事由'],
-            ...resultData.allRecords.map(r => [r.sheet, r.type, r.office, r.person, r.amount, r.reason])
-        ];
-        const ws3 = XLSX.utils.aoa_to_sheet(s3data);
-        XLSX.utils.book_append_sheet(wb, ws3, '全部明細');
-    }
+    const wb = XLSX.utils.book_new();
+    const data = [];
 
-    // Sheet4: 加班費彙整
-    const otRecords = resultData.allRecords.filter(r => r.type === '加班費');
+    // === 區塊1: 全部明細 ===
+    data.push([office ? `${office} 全部明細` : '全部出差明細']);
+    data.push(['分頁', '類型', '姓名', '金額', '事由']);
+    records.forEach(r => data.push([r.sheet, r.type, r.person, r.amount, r.reason]));
+    data.push(['', '', '合計', records.reduce((s, r) => s + r.amount, 0), '']);
+    data.push([]);
+
+    // === 區塊2: 個人小計 ===
+    data.push(['個人小計']);
+    data.push(['姓名', ...feeTypes, '總計']);
+    personData.forEach(p => {
+        const vals = feeTypes.map(t => p[t] || 0);
+        data.push([p.person, ...vals, vals.reduce((s, v) => s + v, 0)]);
+    });
+    data.push([]);
+
+    // === 區塊3: 加班費彙整 ===
     if (otRecords.length > 0) {
-        const s4data = [
-            ['加班費彙整'],
-            [],
-            ['分頁', '衛生所', '姓名', '金額', '事由'],
-            ...otRecords.map(r => [r.sheet, r.office, r.person, r.amount, r.reason]),
-            ['', '', '合計', otRecords.reduce((s, r) => s + r.amount, 0), '']
-        ];
-        const ws4 = XLSX.utils.aoa_to_sheet(s4data);
-        XLSX.utils.book_append_sheet(wb, ws4, '加班費彙整');
+        data.push(['加班費彙整']);
+        data.push(['分頁', '姓名', '金額', '事由']);
+        otRecords.forEach(r => data.push([r.sheet, r.person, r.amount, r.reason]));
+        data.push(['', '合計', otRecords.reduce((s, r) => s + r.amount, 0), '']);
     }
+
+    data.push([]);
+    data.push([]);
+    data.push(['製表人：']);
+
+    const ws = XLSX.utils.aoa_to_sheet(data);
+
+    // A4 直式列印設定
+    ws['!cols'] = [
+        { wch: 18 }, // A: 分頁/姓名
+        { wch: 10 }, // B: 類型/差旅費
+        { wch: 10 }, // C: 姓名/加班費
+        { wch: 10 }, // D: 金額/誤餐費
+        { wch: 18 }, // E: 事由/醫護費用
+        { wch: 10 }  // F: 總計
+    ];
+    ws['!print'] = { orientation: 'portrait', paper: 9 }; // A4=9
+    ws['!margins'] = { left: 0.5, right: 0.5, top: 0.5, bottom: 0.5, header: 0.3, footer: 0.3 };
+
+    XLSX.utils.book_append_sheet(wb, ws, (office || '整理總表').substring(0, 31));
 
     const fileName = `${resultData.fileName}_整理總表.xlsx`;
     XLSX.writeFile(wb, fileName);
