@@ -71,7 +71,7 @@
     <header>
         <h1>差旅明細整理系統</h1>
         <p>將會計室mail的 旅費彙整表.xls 檔案上傳 → 選擇衛生所 → 查看明細與個人小計 → 下載 Excel</p>
-        <p style="font-size:12px; margin-top:4px; text-align:right; font-weight:bold;">v5.7</p>
+        <p style="font-size:12px; margin-top:4px; text-align:right; font-weight:bold;">v5.8</p>
         <p style="font-size:12px; text-align:right; margin-top:6px; color:#ff4444; font-weight:600;">免責聲明：本工具僅供參考，請自行確認內容。</p>
     </header>
 
@@ -311,7 +311,7 @@ function isValidOffice(name) {
     // 必須含有「衛生所」或「區」等中文地名關鍵字
     if (clean.includes('衛生所') || clean.includes('衛生局')) return true;
     if (/[\u4e00-\u9fff].*區/.test(clean)) return true;
-    if (clean === '(傳票明細)') return true;
+    if (clean === '(傳票明細)' || clean === '(整理總表)') return true;
     return false;
 }
 
@@ -674,17 +674,22 @@ function extractSelfOutput(sheet, sheetName) {
     const nrows = sheetRows(sheet);
     const records = [];
 
-    // Row 0: 標題（含衛生所名稱）
-    const titleRow = getRow(sheet, 0);
-    const title = String(titleRow[0] || '').trim();
-    // 從標題提取衛生所，例如 "115年衛生所第3次旅費 佳里區衛生所"
+    // 從標題或 sheetName 提取衛生所
     let office = '';
-    const om = title.match(/([\u4e00-\u9fff]+區衛生所)/);
-    if (om) office = om[1];
+    for (let r = 0; r < Math.min(nrows, 3); r++) {
+        const t = String(getRow(sheet, r)[0] || '').replace(/\s+/g, '');
+        const om = t.match(/([\u4e00-\u9fff]+[區鄉市]衛生所)/);
+        if (om) { office = om[1]; break; }
+    }
+    if (!office) {
+        const sn = sheetName.replace(/\s+/g, '');
+        const sm = sn.match(/([\u4e00-\u9fff]+[區鄉市]衛生所)/);
+        if (sm) office = sm[1];
+    }
 
-    // 找標題列（分頁|類型|姓名|金額|事由）
+    // 找標題列（分頁|類型|姓名|金額|事由）— 搜尋更大範圍
     let headerRow = -1, colSheet = 0, colType = 1, colPerson = 2, colAmount = 3, colReason = 4;
-    for (let r = 0; r < Math.min(nrows, 5); r++) {
+    for (let r = 0; r < Math.min(nrows, 10); r++) {
         const row = getRow(sheet, r);
         const cells = row.map(v => String(v).replace(/\s/g, '').trim());
         if (cells.includes('分頁') && cells.includes('金額')) {
@@ -713,7 +718,7 @@ function extractSelfOutput(sheet, sheetName) {
 
         const type = String(row[colType] || '').trim() || '差旅費';
         records.push({
-            office: office || sheetName,
+            office: office || '(整理總表)',
             person: String(row[colPerson] || '').trim(),
             amount: amount,
             sheet: String(row[colSheet] || '').trim(),
