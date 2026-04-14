@@ -713,12 +713,12 @@ function extractSelfOutput(sheet, sheetName) {
     let office = '';
     for (let r = 0; r < Math.min(nrows, 3); r++) {
         const t = String(getRow(sheet, r)[0] || '').replace(/\s+/g, '');
-        const om = t.match(/([\u4e00-\u9fff]+[區鄉市]衛生所)/);
+        const om = t.match(/([\u4e00-\u9fff]{1,4}[區鄉市]衛生所)/);
         if (om) { office = om[1]; break; }
     }
     if (!office) {
         const sn = sheetName.replace(/\s+/g, '');
-        const sm = sn.match(/([\u4e00-\u9fff]+[區鄉市]衛生所)/);
+        const sm = sn.match(/([\u4e00-\u9fff]{1,4}[區鄉市]衛生所)/);
         if (sm) office = sm[1];
     }
 
