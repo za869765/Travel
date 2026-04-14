@@ -60,7 +60,7 @@
     <header>
         <h1>差旅明細整理系統</h1>
         <p>上傳 XLS 旅費彙整表 → 選擇衛生所 → 查看明細與個人小計 → 下載 Excel</p>
-        <p style="opacity:0.6; font-size:12px; margin-top:4px;">v4.1 (2026-04-14)</p>
+        <p style="opacity:0.6; font-size:12px; margin-top:4px;">v4.2 (2026-04-14)</p>
     </header>
 
     <div class="card" id="uploadCard">
@@ -707,12 +707,15 @@ function processFile(file) {
             addLog('✅ 處理完成！');
             fill.style.width = '100%';
 
+            const unknownCount = validRecords.filter(r => !r.person).length;
+
             resultData = {
                 allRecords: validRecords,
                 offices,
                 personList,
                 overtimeCount,
                 grandTotal,
+                unknownCount,
                 personCount: personList.length,
                 fileName: file.name.replace(/\.xlsx?$/i, ''),
                 fileTitle: extractFileTitle(file.name),
@@ -734,12 +737,14 @@ function showResult() {
     const r = resultData;
     document.getElementById('resultArea').style.display = 'block';
 
+    const unknownCard = r.unknownCount > 0 ? `<div class="stat-card"><div class="number" style="color:#e74c3c">${r.unknownCount}</div><div class="label" style="color:#e74c3c">無姓名筆數</div></div>` : '';
     document.getElementById('resultSummary').innerHTML = `
         <div class="stat-card"><div class="number">${r.allRecords.length}</div><div class="label">全部明細筆數</div></div>
         <div class="stat-card"><div class="number">${r.offices.length}</div><div class="label">衛生所數</div></div>
         <div class="stat-card"><div class="number">${r.overtimeCount}</div><div class="label">加班費筆數</div></div>
         <div class="stat-card"><div class="number">${r.personCount}</div><div class="label">不重複人員</div></div>
         <div class="stat-card"><div class="number">${r.grandTotal.toLocaleString()}</div><div class="label">全部總金額</div></div>
+        ${unknownCard}
     `;
 
     const sel = document.getElementById('officeSelect');
