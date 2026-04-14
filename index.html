@@ -71,7 +71,7 @@
     <header>
         <h1>差旅明細整理系統</h1>
         <p>將會計室mail的 旅費彙整表.xls 檔案上傳 → 選擇衛生所 → 查看明細與個人小計 → 下載 Excel</p>
-        <p style="font-size:12px; margin-top:4px; text-align:right; font-weight:bold;">v6.0</p>
+        <p style="font-size:12px; margin-top:4px; text-align:right; font-weight:bold;">v6.1</p>
         <p style="font-size:12px; text-align:right; margin-top:6px; color:#ff4444; font-weight:600;">免責聲明：本工具僅供參考，請自行確認內容。</p>
     </header>
 
@@ -155,14 +155,39 @@ const OFFICE_CODE_MAP = {
     'z33':'南區衛生所','z34':'中西區衛生所','z35':'北區衛生所','z36':'安南區衛生所',
     'z37':'安平區衛生所'
 };
+// 反向查詢表：區名→完整衛生所名（啟動時建立）
+const OFFICE_NAME_MAP = {};
+(function() {
+    Object.values(OFFICE_CODE_MAP).forEach(full => {
+        // 「佳里區衛生所」→ 佳里區, 佳里
+        const m = full.match(/([\u4e00-\u9fff]+[區鄉市])衛生所/);
+        if (m) {
+            OFFICE_NAME_MAP[m[1]] = full;                     // 佳里區→佳里區衛生所
+            OFFICE_NAME_MAP[m[1].replace(/[區鄉市]$/, '')] = full; // 佳里→佳里區衛生所
+        }
+        OFFICE_NAME_MAP[full] = full;
+    });
+})();
+
 function resolveOffice(name) {
     if (!name) return name;
-    // 去除中文字間多餘空格（如「北 區衛生所」→「北區衛生所」）
+    // 去除所有空格（如「北 區衛生所」→「北區衛生所」）
     let clean = name.trim().replace(/\s+/g, '');
+    // z-code 對照
     const key = clean.toLowerCase();
     if (OFFICE_CODE_MAP[key]) return OFFICE_CODE_MAP[key];
-    // 若清理後含衛生所則回傳清理版
+    // 完整名稱 / 少「衛生所」/ 少「區」智慧匹配
+    if (OFFICE_NAME_MAP[clean]) return OFFICE_NAME_MAP[clean];
+    // 去掉「衛生所」後再試（佳里衛生所→佳里→佳里區衛生所）
+    const noSuffix = clean.replace(/衛生所$/, '');
+    if (noSuffix !== clean && OFFICE_NAME_MAP[noSuffix]) return OFFICE_NAME_MAP[noSuffix];
+    // 去掉「區衛生所」後再試
+    const noDistSuffix = clean.replace(/[區鄉市]?衛生所$/, '');
+    if (noDistSuffix !== clean && OFFICE_NAME_MAP[noDistSuffix]) return OFFICE_NAME_MAP[noDistSuffix];
+    // 含衛生所則回傳清理版
     if (clean.includes('衛生所')) return clean;
+    // 最後嘗試純地名
+    if (OFFICE_NAME_MAP[clean]) return OFFICE_NAME_MAP[clean];
     return name.trim();
 }
 
