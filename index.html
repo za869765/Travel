@@ -69,9 +69,9 @@
         <div class="upload-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
             <div class="icon">📁</div>
             <p>點擊或拖曳 XLS 檔案到此處</p>
-            <div class="hint">支援 .xls / .xlsx 格式，上傳後自動處理</div>
+            <div class="hint">支援 .xls / .xlsx / .csv 格式，上傳後自動處理</div>
         </div>
-        <input type="file" id="fileInput" accept=".xls,.xlsx">
+        <input type="file" id="fileInput" accept=".xls,.xlsx,.csv">
         <div id="fileInfo" style="display:none"></div>
     </div>
 
@@ -153,7 +153,7 @@ document.getElementById('fileInput').addEventListener('change', e => {
 });
 
 function handleFile(file) {
-    if (!file.name.match(/\.xlsx?$/i)) { alert('請上傳 .xls 格式檔案'); return; }
+    if (!file.name.match(/\.(xlsx?|csv)$/i)) { alert('請上傳 .xls / .xlsx / .csv 格式檔案'); return; }
 
     // 顯示檔案資訊
     document.getElementById('fileInfo').style.display = 'flex';
