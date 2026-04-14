@@ -53,6 +53,17 @@
         .filter-bar select:focus { border-color: #4a90d9; outline: none; }
         .selected-info { background: #fff8e1; border: 1px solid #ffc107; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; font-size: 15px; }
         .selected-info strong { color: #e65100; }
+        /* 彈窗 */
+        .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 999; justify-content: center; align-items: center; }
+        .modal-overlay.show { display: flex; }
+        .modal-box { background: white; border-radius: 16px; padding: 36px 32px 28px; max-width: 440px; width: 90%; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,0.3); animation: modalIn 0.35s ease; }
+        @keyframes modalIn { from { opacity: 0; transform: scale(0.8) translateY(20px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+        .modal-box .modal-icon { font-size: 52px; margin-bottom: 16px; }
+        .modal-box .modal-msg { font-size: 16px; color: #333; line-height: 1.7; margin-bottom: 8px; }
+        .modal-box .modal-file { font-size: 14px; color: #e74c3c; font-weight: 700; word-break: break-all; margin-bottom: 20px; }
+        .modal-box .modal-hint { font-size: 13px; color: #888; margin-bottom: 20px; }
+        .modal-box .btn-modal { padding: 10px 36px; border: none; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer; background: #4a90d9; color: white; transition: background 0.2s; }
+        .modal-box .btn-modal:hover { background: #3578c0; }
     </style>
 </head>
 <body>
@@ -60,7 +71,7 @@
     <header>
         <h1>差旅明細整理系統</h1>
         <p>將會計室mail的 旅費彙整表.xls 檔案上傳 → 選擇衛生所 → 查看明細與個人小計 → 下載 Excel</p>
-        <p style="font-size:12px; margin-top:4px; text-align:right; font-weight:bold;">v5.4</p>
+        <p style="font-size:12px; margin-top:4px; text-align:right; font-weight:bold;">v5.5</p>
         <p style="font-size:12px; text-align:right; margin-top:6px; color:#ff4444; font-weight:600;">免責聲明：本工具僅供參考，請自行確認內容。</p>
     </header>
 
@@ -113,6 +124,17 @@
             <h2 id="personTitle">👤 個人小計</h2>
             <div class="table-wrap" id="personDetail"></div>
         </div>
+    </div>
+</div>
+
+<!-- 查無資料彈窗 -->
+<div class="modal-overlay" id="noDataModal">
+    <div class="modal-box">
+        <div class="modal-icon">⚠️</div>
+        <div class="modal-msg">查無資料，請重新確認上傳。</div>
+        <div class="modal-file" id="modalFileName"></div>
+        <div class="modal-hint">請上傳會計室寄送的旅費彙整表原始檔</div>
+        <button class="btn-modal" onclick="closeNoDataModal()">確定</button>
     </div>
 </div>
 
@@ -871,8 +893,9 @@ function processFile(file) {
 
             if (validRecords.length === 0) {
                 addLog('\n⚠️ 未偵測到有效資料！');
-                addLog('請確認上傳的是會計室寄送的旅費彙整表原始檔（非本工具產出的整理總表）');
                 fill.style.width = '100%';
+                document.getElementById('progressArea').style.display = 'none';
+                showNoDataModal(file.name);
                 return;
             }
 
@@ -1081,6 +1104,16 @@ function downloadExcel() {
 
     const fileName = `${resultData.fileName}_整理總表.xlsx`;
     XLSX.writeFile(wb, fileName);
+}
+
+// ===== 查無資料彈窗 =====
+function showNoDataModal(filename) {
+    document.getElementById('modalFileName').textContent = filename;
+    document.getElementById('noDataModal').classList.add('show');
+}
+function closeNoDataModal() {
+    document.getElementById('noDataModal').classList.remove('show');
+    resetPage();
 }
 </script>
 </body>
