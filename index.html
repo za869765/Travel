@@ -60,7 +60,7 @@
     <header>
         <h1>差旅明細整理系統</h1>
         <p>上傳 XLS 旅費彙整表 → 選擇衛生所 → 查看明細與個人小計 → 下載 Excel</p>
-        <p style="opacity:0.6; font-size:12px; margin-top:4px;">v4.6 (2026-04-14)</p>
+        <p style="opacity:0.6; font-size:12px; margin-top:4px;">v4.7 (2026-04-14)</p>
     </header>
 
     <div class="card" id="uploadCard">
@@ -252,15 +252,24 @@ function cleanSheetName(name) {
     // 有點的頁碼：2.支援→支援, 13.11-12月→11-12月, 8.1月→1月
     const dotClean = s.replace(/^\d+\.\s*/, '');
     if (dotClean !== s) return dotClean;
-    // 開頭是日期格式則保留不動
-    if (/^\d{1,2}\/\d{1,2}/.test(s)) return s;        // M/D, MM/DD: 3/21, 07/20
-    if (/^\d{1,2}月/.test(s)) return s;                // N月: 9月結核, 11月整合
-    if (/^\d{4}[\u4e00-\u9fff.]/.test(s)) return s;   // MMDD: 0126低碳, 0226.0303
-    if (/^\d{3}[\u4e00-\u9fff]/.test(s)) return s;    // MDD: 720健身
-    // 頁碼(1位)+後面內容：30818高齡→0818高齡, 70126低碳→0126低碳
-    if (/^\d\d/.test(s)) return s.substring(1);
-    // 其他單數字開頭：去掉
-    return s.replace(/^\d/, '');
+    // 已經是日期格式則保留不動
+    if (/^\d{1,2}\/\d{1,2}/.test(s)) return s;        // M/D, MM/DD
+    if (/^\d{1,2}月/.test(s)) return s;                // N月
+    if (/^\d{4}[\u4e00-\u9fff.]/.test(s)) return s;   // MMDD+中文
+    if (/^\d{3}[\u4e00-\u9fff]/.test(s)) return s;    // MDD+中文
+    // 嘗試去1位頁碼→看是否露出MMDD日期
+    const a1 = s.substring(1);
+    if (/^\d{4}[\u4e00-\u9fff.]/.test(a1)) return a1;  // 70126低碳→0126低碳
+    // 嘗試去2位頁碼→看是否露出MMDD日期
+    const a2 = s.substring(2);
+    if (s.length > 6 && /^\d{4}[\u4e00-\u9fff.]/.test(a2)) return a2; // 130818高齡→0818高齡
+    // 嘗試去1位→MDD
+    if (/^\d{3}[\u4e00-\u9fff]/.test(a1)) return a1;
+    // 去2位→MDD
+    if (s.length > 5 && /^\d{3}[\u4e00-\u9fff]/.test(a2)) return a2;
+    // 預設去第一個數字
+    if (/^\d/.test(s)) return a1;
+    return s;
 }
 
 // ===== 跳過行判斷 =====
