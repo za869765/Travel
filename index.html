@@ -71,7 +71,7 @@
     <header>
         <h1>差旅明細整理系統</h1>
         <p>將會計室mail的 旅費彙整表.xls 檔案上傳 → 選擇衛生所 → 查看明細與個人小計 → 下載 Excel</p>
-        <p style="font-size:12px; margin-top:4px; text-align:right; font-weight:bold;">v5.8</p>
+        <p style="font-size:12px; margin-top:4px; text-align:right; font-weight:bold;">v5.9</p>
         <p style="font-size:12px; text-align:right; margin-top:6px; color:#ff4444; font-weight:600;">免責聲明：本工具僅供參考，請自行確認內容。</p>
     </header>
 
@@ -687,8 +687,8 @@ function extractSelfOutput(sheet, sheetName) {
         if (sm) office = sm[1];
     }
 
-    // 找標題列（分頁|類型|姓名|金額|事由）— 搜尋更大範圍
-    let headerRow = -1, colSheet = 0, colType = 1, colPerson = 2, colAmount = 3, colReason = 4;
+    // 找標題列（分頁|類型|姓名|金額|事由 或 分頁|類型|衛生所|姓名|金額|事由）
+    let headerRow = -1, colSheet = 0, colType = -1, colOffice = -1, colPerson = 2, colAmount = 3, colReason = 4;
     for (let r = 0; r < Math.min(nrows, 10); r++) {
         const row = getRow(sheet, r);
         const cells = row.map(v => String(v).replace(/\s/g, '').trim());
@@ -697,8 +697,9 @@ function extractSelfOutput(sheet, sheetName) {
             cells.forEach((s, c) => {
                 if (s === '分頁') colSheet = c;
                 if (s === '類型') colType = c;
+                if (s === '衛生所' || s === '所別') colOffice = c;
                 if (s === '姓名') colPerson = c;
-                if (s === '金額') colAmount = c;
+                if (s === '金額' && colAmount === 3) colAmount = c;
                 if (s === '事由') colReason = c;
             });
             break;
@@ -711,15 +712,19 @@ function extractSelfOutput(sheet, sheetName) {
         const first = String(row[0] || '').trim();
         // 遇到「個人小計」「加班費彙整」「製表人」就停止
         if (first === '個人小計' || first === '加班費彙整' || first.startsWith('製表人')) break;
-        if (isSkipRow(row)) continue;
+        // 不用 isSkipRow（分頁名可能含「合計」字樣），改用精準判斷
+        const personVal = String(row[colPerson] || '').trim();
+        if (personVal === '合計' || personVal === '總計') continue;
+        if (!row.some(v => String(v).trim())) continue;
 
         const amount = safeFloat(row[colAmount]);
         if (amount <= 0) continue;
 
-        const type = String(row[colType] || '').trim() || '差旅費';
+        const type = colType >= 0 ? (String(row[colType] || '').trim() || '差旅費') : '差旅費';
+        const rowOffice = colOffice >= 0 ? String(row[colOffice] || '').trim() : '';
         records.push({
-            office: office || '(整理總表)',
-            person: String(row[colPerson] || '').trim(),
+            office: rowOffice || office || '(整理總表)',
+            person: personVal,
             amount: amount,
             sheet: String(row[colSheet] || '').trim(),
             type: type,
@@ -896,6 +901,12 @@ function processFile(file) {
             const isExpenseReport = isExpenseReportFile(wb, file.name);
             if (isExpenseReport) addLog('📋 偵測為代辦經費彙整表格式');
 
+            // 偵測多分頁自產檔：有「全部明細」sheet 時只讀該 sheet（避免重複計算）
+            const hasSelfAllSheet = wb.SheetNames.includes('全部明細') || wb.SheetNames.includes('整理總表');
+            const selfMultiSheet = hasSelfAllSheet && wb.SheetNames.length > 1 &&
+                wb.SheetNames.some(n => detectSheetType(wb.Sheets[n], n, 0) === 'self_output');
+            const selfMainSheet = wb.SheetNames.includes('全部明細') ? '全部明細' : '整理總表';
+
             wb.SheetNames.forEach((name, idx) => {
                 const sheet = wb.Sheets[name];
 
@@ -912,6 +923,12 @@ function processFile(file) {
 
                 const type = detectSheetType(sheet, name, idx);
                 if (type === 'empty') return;
+
+                // 多分頁自產檔：只讀主 sheet，其餘全部略過（避免重複計算）
+                if (selfMultiSheet && name !== selfMainSheet) {
+                    addLog(`   [${idx}] ${name} → 整理總表分頁 (略過，避免重複)`);
+                    return;
+                }
 
                 let recs = [];
                 if (type === 'overtime_detail') recs = extractOvertimeDetail(sheet, name);
