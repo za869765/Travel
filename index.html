@@ -71,7 +71,7 @@
     <header>
         <h1>差旅明細整理系統</h1>
         <p>將會計室mail的 旅費彙整表.xls 檔案上傳 → 選擇衛生所 → 查看明細與個人小計 → 下載 Excel</p>
-        <p style="font-size:12px; margin-top:4px; text-align:right; font-weight:bold;">v6.4</p>
+        <p style="font-size:12px; margin-top:4px; text-align:right; font-weight:bold;">v6.5</p>
         <p style="font-size:12px; text-align:right; margin-top:6px; color:#ff4444; font-weight:600;">免責聲明：本工具僅供參考，請自行確認內容。</p>
     </header>
 
@@ -713,12 +713,12 @@ function extractSelfOutput(sheet, sheetName) {
     let office = '';
     for (let r = 0; r < Math.min(nrows, 3); r++) {
         const t = String(getRow(sheet, r)[0] || '').replace(/\s+/g, '');
-        const om = t.match(/([\u4e00-\u9fff]{1,4}[區鄉市]衛生所)/);
+        const om = t.match(/([\u4e00-\u9fff]{1,2}[區鄉市]衛生所)/);
         if (om) { office = om[1]; break; }
     }
     if (!office) {
         const sn = sheetName.replace(/\s+/g, '');
-        const sm = sn.match(/([\u4e00-\u9fff]{1,4}[區鄉市]衛生所)/);
+        const sm = sn.match(/([\u4e00-\u9fff]{1,2}[區鄉市]衛生所)/);
         if (sm) office = sm[1];
     }
 
