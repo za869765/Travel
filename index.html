@@ -98,10 +98,6 @@
         <div class="card">
             <h2>📊 處理結果</h2>
             <div class="result-summary" id="resultSummary"></div>
-            <div class="btn-group">
-                <button class="btn btn-success" onclick="downloadExcel()">📥 下載 Excel 總表</button>
-                <button class="btn btn-outline" onclick="resetPage()">🔄 處理另一份</button>
-            </div>
         </div>
 
         <div class="card" id="filterCard">
@@ -123,6 +119,11 @@
         <div class="card" id="personCard" style="display:none">
             <h2 id="personTitle">👤 個人小計</h2>
             <div class="table-wrap" id="personDetail"></div>
+        </div>
+
+        <div class="btn-group" style="margin-top:16px;">
+            <button class="btn btn-success" onclick="downloadExcel()">📥 下載 Excel 總表</button>
+            <button class="btn btn-outline" onclick="resetPage()">🔄 處理另一份</button>
         </div>
     </div>
 </div>
