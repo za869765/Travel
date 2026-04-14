@@ -208,10 +208,16 @@ function isSkipRow(row) {
 function isValidOffice(name) {
     if (!name) return false;
     const clean = name.replace(/\s/g, '');
-    return clean && !clean.includes('總計') && !clean.includes('合計');
+    return clean && !clean.includes('總計') && !clean.includes('合計') && !clean.includes('製表');
 }
 
-function safeFloat(v) { const f = parseFloat(v); return isNaN(f) ? 0 : f; }
+function safeFloat(v) {
+    if (v === null || v === undefined || v === '') return 0;
+    if (typeof v === 'number') return v;
+    const s = String(v).trim();
+    if (/^-?\d+(\.\d+)?$/.test(s)) return parseFloat(s);
+    return 0;
+}
 
 function getRow(sheet, r) {
     const range = XLSX.utils.decode_range(sheet['!ref'] || 'A1');
@@ -270,48 +276,88 @@ function detectSheetType(sheet, name, idx) {
     if (headerText.includes('領受人')) {
         return (name.includes('加班') || headerText.includes('加班')) ? 'overtime_detail' : 'travel_detail';
     }
+    // 傳票格式：金額拆成百萬/十萬/萬/千/百/十/元 (要在 travel_list 前偵測)
+    if (headerText.includes('差旅費明細') || (headerText.includes('名    稱') && headerText.includes('金     額')))
+        return 'voucher_detail';
+
     if (headerText.includes('旅費明細') || headerText.includes('金額(元)') || headerText.includes('金額（元）'))
         return 'travel_list';
 
-    if (ncols <= 5) {
-        for (let r = 0; r < Math.min(nrows, 5); r++) {
-            const t = getRow(sheet, r).join('');
-            if (t.includes('衛生所') && (t.includes('金額') || t.includes('備註')))
-                return 'travel_list';
+    for (let r = 0; r < Math.min(nrows, 5); r++) {
+        const t = getRow(sheet, r).join('');
+        if ((t.includes('衛生所') || t.includes('鄉鎮')) && (t.includes('金額') || t.includes('備註')))
+            return 'travel_list';
+    }
+
+    return 'empty';
+}
+
+// ===== 智慧欄位偵測 =====
+function findHeaderRow(sheet, keyword) {
+    // 尋找真正的欄位標題列（多個欄位關鍵字分佈在不同 cell）
+    const nrows = sheetRows(sheet);
+    for (let r = 0; r < Math.min(nrows, 15); r++) {
+        const row = getRow(sheet, r);
+        const cells = row.map(v => String(v).trim()).filter(s => s);
+        // 欄位標題列：至少2個不同cell有關鍵字
+        let hits = 0;
+        cells.forEach(s => {
+            if (s === '領受人' || s.includes('衛生所') || s === '所別' || s === '金額' || s === '總計' || s.includes('備註') || s === '編號' || s.includes('衛生所名稱')) hits++;
+        });
+        if (hits >= 2 && row.some(v => String(v).trim() === keyword || String(v).trim().includes(keyword))) {
+            return r;
         }
     }
-    return 'empty';
+    // fallback: 找包含 keyword 的行（但只在獨立 cell 中）
+    for (let r = 0; r < Math.min(nrows, 15); r++) {
+        const row = getRow(sheet, r);
+        if (row.some(v => { const s = String(v).trim(); return s === keyword || (s.length < 10 && s.includes(keyword)); })) {
+            return r;
+        }
+    }
+    return -1;
+}
+
+function detectColumns(sheet, headerRow) {
+    const row = getRow(sheet, headerRow);
+    let officeCol = -1, personCol = -1, amountCol = -1, noteCol = -1;
+    row.forEach((v, c) => {
+        const s = String(v).trim();
+        if ((s.includes('衛生所') || s === '所別' || s.includes('衛生所名稱') || s === '鄉鎮別') && officeCol === -1) officeCol = c;
+        if (s.includes('領受人') && personCol === -1) personCol = c;
+        if ((s === '金額' || (s.includes('金額') && !s.includes('總'))) && amountCol === -1) amountCol = c;
+        if (s === '總計' && amountCol === -1) amountCol = c;
+        if (s.includes('備註') && noteCol === -1) noteCol = c;
+    });
+    return { officeCol, personCol, amountCol, noteCol };
 }
 
 // ===== 解析各類型 =====
 function extractOvertimeDetail(sheet, sheetName, fileLabel) {
     const nrows = sheetRows(sheet);
     const records = [];
-    let currentOffice = '', amountCol = 5, noteCol = 7, startRow = 5;
+    let currentOffice = '';
 
-    for (let r = 0; r < Math.min(nrows, 10); r++) {
-        const row = getRow(sheet, r);
-        const t = row.join('');
-        if (t.includes('領受人')) {
-            startRow = r + 1;
-            row.forEach((v, c) => {
-                if (String(v).includes('金額')) amountCol = c;
-                if (String(v).includes('備註')) noteCol = c;
-            });
-            break;
-        }
-    }
+    const hdr = findHeaderRow(sheet, '領受人');
+    const startRow = hdr >= 0 ? hdr + 1 : 6;
+    const cols = hdr >= 0 ? detectColumns(sheet, hdr) : {};
+    const officeCol = cols.officeCol >= 0 ? cols.officeCol : 1;
+    const personCol = cols.personCol >= 0 ? cols.personCol : 2;
+    const amountCol = cols.amountCol >= 0 ? cols.amountCol : 5;
+    const noteCol = cols.noteCol >= 0 ? cols.noteCol : 7;
 
     for (let r = startRow; r < nrows; r++) {
         const row = getRow(sheet, r);
         if (isSkipRow(row) || !row.some(v => String(v).trim())) continue;
-        let office = String(row[1] || '').trim();
+        let office = String(row[officeCol] || '').trim();
         if (office && (office.includes('衛生所') || office.includes('區'))) {
             if (!office.includes('衛生所') && office.includes('區')) office += '衛生所';
             currentOffice = office;
         }
-        const person = String(row[2] || '').trim();
-        let amount = safeFloat(row[amountCol]) || safeFloat(row[5]) || safeFloat(row[4]);
+        const person = String(row[personCol] || '').trim();
+        let amount = safeFloat(row[amountCol]);
+        if (amount === 0) amount = safeFloat(row[5]);
+        if (amount === 0) amount = safeFloat(row[4]);
         const note = String(row[noteCol] || '').trim();
         if (amount > 0 && currentOffice) {
             for (const sp of splitPersons(person, amount)) {
@@ -326,7 +372,7 @@ function extractOvertimeSummary(sheet, sheetName, fileLabel) {
     const nrows = sheetRows(sheet);
     const records = [];
     let purpose = sheetName;
-    for (let r = 0; r < Math.min(nrows, 3); r++) {
+    for (let r = 0; r < Math.min(nrows, 5); r++) {
         const t = getRow(sheet, r).join('');
         if (t.includes('用途')) { purpose = t.replace(/用途[：:]/, '').trim(); break; }
     }
@@ -334,14 +380,38 @@ function extractOvertimeSummary(sheet, sheetName, fileLabel) {
     if (purpose.includes('差旅') || purpose.includes('旅費')) feeType = '差旅費';
     else if (purpose.includes('誤餐')) feeType = '誤餐費';
     else if (purpose.includes('醫護')) feeType = '醫護費用';
+    else if (purpose.includes('宣導') || purpose.includes('郵簡')) feeType = '業務費';
 
-    for (let r = 2; r < nrows; r++) {
+    // 智慧偵測欄位
+    let officeCol = 1, amountCol = 2, personCol = -1, startRow = 2;
+    for (let r = 0; r < Math.min(nrows, 5); r++) {
+        const row = getRow(sheet, r);
+        const cells = row.map(v => String(v).trim());
+        if (cells.some(s => s.includes('鄉鎮') || s.includes('衛生所') || s === '編號')) {
+            startRow = r + 1;
+            cells.forEach((s, c) => {
+                if (s.includes('鄉鎮') || s.includes('衛生所名稱') || s.includes('衛生所')) officeCol = c;
+                if (s === '金額' || s === '總計' || (s.includes('金額') && !s.includes('總'))) amountCol = c;
+                if (s.includes('領受人')) personCol = c;
+            });
+            break;
+        }
+    }
+
+    for (let r = startRow; r < nrows; r++) {
         const row = getRow(sheet, r);
         if (isSkipRow(row)) continue;
-        const office = String(row[1] || '').trim();
-        const amount = safeFloat(row[2]);
+        const office = String(row[officeCol] || '').trim();
+        const amount = safeFloat(row[amountCol]);
+        const person = personCol >= 0 ? String(row[personCol] || '').trim() : '';
         if (amount > 0 && office && isValidOffice(office)) {
-            records.push({ office, person: '', amount, sheet: sheetName, type: feeType, reason: purpose });
+            if (person) {
+                for (const sp of splitPersons(person, amount)) {
+                    records.push({ office, person: sp.name, amount: sp.amount, sheet: sheetName, type: feeType, reason: purpose });
+                }
+            } else {
+                records.push({ office, person: '', amount, sheet: sheetName, type: feeType, reason: purpose });
+            }
         }
     }
     return records;
@@ -350,30 +420,28 @@ function extractOvertimeSummary(sheet, sheetName, fileLabel) {
 function extractTravelDetail(sheet, sheetName, fileLabel) {
     const nrows = sheetRows(sheet);
     const records = [];
-    let currentOffice = '', amountCol = 5, noteCol = 7, startRow = 5;
+    let currentOffice = '';
 
-    for (let r = 0; r < Math.min(nrows, 10); r++) {
-        const row = getRow(sheet, r);
-        if (row.join('').includes('領受人')) {
-            startRow = r + 1;
-            row.forEach((v, c) => {
-                if (String(v).includes('金額')) amountCol = c;
-                if (String(v).includes('備註')) noteCol = c;
-            });
-            break;
-        }
-    }
+    const hdr = findHeaderRow(sheet, '領受人');
+    const startRow = hdr >= 0 ? hdr + 1 : 6;
+    const cols = hdr >= 0 ? detectColumns(sheet, hdr) : {};
+    const officeCol = cols.officeCol >= 0 ? cols.officeCol : 1;
+    const personCol = cols.personCol >= 0 ? cols.personCol : 2;
+    const amountCol = cols.amountCol >= 0 ? cols.amountCol : 5;
+    const noteCol = cols.noteCol >= 0 ? cols.noteCol : 7;
 
     for (let r = startRow; r < nrows; r++) {
         const row = getRow(sheet, r);
         if (isSkipRow(row) || !row.some(v => String(v).trim())) continue;
-        let office = String(row[1] || '').trim();
+        let office = String(row[officeCol] || '').trim();
         if (office && (office.includes('衛生所') || office.includes('區'))) {
             if (!office.includes('衛生所') && office.includes('區')) office += '衛生所';
             currentOffice = office;
         }
-        const person = String(row[2] || '').trim();
-        let amount = safeFloat(row[amountCol]) || safeFloat(row[5]);
+        const person = String(row[personCol] || '').trim();
+        let amount = safeFloat(row[amountCol]);
+        if (amount === 0) amount = safeFloat(row[5]);
+        if (amount === 0) amount = safeFloat(row[4]);
         const note = String(row[noteCol] || '').trim();
         if (amount > 0 && currentOffice) {
             for (const sp of splitPersons(person, amount)) {
@@ -412,20 +480,32 @@ function extractTravelTraffic(sheet, sheetName, fileLabel) {
 function extractTravelList(sheet, sheetName, fileLabel) {
     const nrows = sheetRows(sheet);
     const records = [];
-    let startRow = 3;
+    let officeCol = 0, amountCol = 1, noteCol = 2, startRow = 3;
+
     for (let r = 0; r < Math.min(nrows, 5); r++) {
-        const t = getRow(sheet, r).join('');
-        if (t.includes('衛生所') && (t.includes('金額') || t.includes('備註'))) { startRow = r + 1; break; }
+        const row = getRow(sheet, r);
+        const t = row.join('');
+        if ((t.includes('衛生所') || t.includes('鄉鎮')) && (t.includes('金額') || t.includes('備註'))) {
+            startRow = r + 1;
+            row.forEach((v, c) => {
+                const s = String(v).trim();
+                if (s.includes('衛生所') || s.includes('鄉鎮')) officeCol = c;
+                if (s.includes('金額')) amountCol = c;
+                if (s.includes('備註')) noteCol = c;
+            });
+            break;
+        }
     }
 
     for (let r = startRow; r < nrows; r++) {
         const row = getRow(sheet, r);
         if (isSkipRow(row)) continue;
-        let officeRaw = String(row[0] || '').trim();
-        const amount = safeFloat(row[1]);
-        const note = String(row[2] || '').trim();
+        let officeRaw = String(row[officeCol] || '').trim();
+        const amount = safeFloat(row[amountCol]);
+        const note = String(row[noteCol] || '').trim();
         if (amount > 0 && officeRaw) {
             let office = officeRaw.replace(/^\d+\.?\s*/, '').trim() || officeRaw;
+            if (!office.includes('衛生所') && office.includes('區')) office += '衛生所';
             let person = '';
             if (note) {
                 const m = note.match(/\d+\/\d+\s*(.+)/);
@@ -434,6 +514,46 @@ function extractTravelList(sheet, sheetName, fileLabel) {
             for (const sp of splitPersons(person, amount)) {
                 records.push({ office, person: sp.name, amount: sp.amount, sheet: sheetName, type: '差旅費', reason: sheetName });
             }
+        }
+    }
+    return records;
+}
+
+function extractVoucherDetail(sheet, sheetName, fileLabel) {
+    // 傳票格式：姓名在 col0，金額分拆成百萬~元各欄，col10 有小計金額
+    const nrows = sheetRows(sheet);
+    const records = [];
+    let startRow = 8, subtotalCol = 10;
+
+    // 找到有「名 稱」和「金 額」的 header
+    for (let r = 0; r < Math.min(nrows, 10); r++) {
+        const row = getRow(sheet, r);
+        const t = row.join('');
+        if (t.includes('小計') || t.includes('小 計')) {
+            row.forEach((v, c) => { if (String(v).includes('小計') || String(v).includes('小 計')) subtotalCol = c; });
+        }
+        if (t.replace(/\s/g, '').includes('名稱') && t.replace(/\s/g, '').includes('金額')) {
+            startRow = r + 2; // skip header + sub-header (百萬/十萬...)
+            break;
+        }
+    }
+
+    // 從彙總表標題取得衛生所或用途資訊
+    let purpose = sheetName;
+    for (let r = 0; r < Math.min(nrows, 8); r++) {
+        const t = getRow(sheet, r).join('');
+        if (t.includes('明細表')) { purpose = t.replace(/\s/g, '').match(/[^表]+明細表/)?.[0] || sheetName; break; }
+    }
+
+    for (let r = startRow; r < nrows; r++) {
+        const row = getRow(sheet, r);
+        if (isSkipRow(row)) continue;
+        const person = String(row[0] || '').trim();
+        if (!person) continue;
+        // 只取小計欄有值的行（每人小計）
+        const amount = safeFloat(row[subtotalCol]);
+        if (amount > 0) {
+            records.push({ office: '(傳票明細)', person, amount, sheet: sheetName, type: '差旅費', reason: purpose });
         }
     }
     return records;
@@ -467,7 +587,7 @@ function processFile(file) {
             const typeLabels = {
                 'overtime_detail': '加班明細', 'overtime_summary': '費用彙整',
                 'travel_detail': '差旅明細', 'travel_traffic': '交通差旅',
-                'travel_list': '旅費清單', 'summary': '彙總表'
+                'travel_list': '旅費清單', 'voucher_detail': '傳票明細', 'summary': '彙總表'
             };
 
             wb.SheetNames.forEach((name, idx) => {
@@ -481,6 +601,7 @@ function processFile(file) {
                 else if (type === 'travel_detail') recs = extractTravelDetail(sheet, name);
                 else if (type === 'travel_traffic') recs = extractTravelTraffic(sheet, name);
                 else if (type === 'travel_list') recs = extractTravelList(sheet, name);
+                else if (type === 'voucher_detail') recs = extractVoucherDetail(sheet, name);
 
                 allRecords.push(...recs);
                 if (recs.length > 0 || type === 'summary')
@@ -549,6 +670,10 @@ function showResult() {
     const sel = document.getElementById('officeSelect');
     sel.innerHTML = '<option value="">-- 全部衛生所 --</option>';
     r.offices.forEach(o => { sel.innerHTML += `<option value="${o}">${o}</option>`; });
+
+    // 預設選擇佳里區衛生所
+    const defaultOffice = r.offices.find(o => o.includes('佳里'));
+    if (defaultOffice) sel.value = defaultOffice;
 
     filterByOffice();
 }
