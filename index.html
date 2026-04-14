@@ -71,7 +71,7 @@
     <header>
         <h1>差旅明細整理系統</h1>
         <p>將會計室mail的 旅費彙整表.xls 檔案上傳 → 選擇衛生所 → 查看明細與個人小計 → 下載 Excel</p>
-        <p style="font-size:12px; margin-top:4px; text-align:right; font-weight:bold;">v5.6</p>
+        <p style="font-size:12px; margin-top:4px; text-align:right; font-weight:bold;">v5.7</p>
         <p style="font-size:12px; text-align:right; margin-top:6px; color:#ff4444; font-weight:600;">免責聲明：本工具僅供參考，請自行確認內容。</p>
     </header>
 
@@ -979,7 +979,7 @@ function processFile(file) {
                 grandTotal,
                 unknownCount,
                 personCount: personList.length,
-                fileName: file.name.replace(/\.(xlsx?|csv)$/i, ''),
+                fileName: file.name.replace(/\.(xlsx?|csv)$/i, '').replace(/^[\d,]+元/, ''),
                 fileTitle: extractFileTitle(file.name),
                 wb  // 保留原始 workbook 供下載用
             };
@@ -1166,7 +1166,8 @@ function downloadExcel() {
 
     XLSX.utils.book_append_sheet(wb, ws, (office || '整理總表').substring(0, 31));
 
-    const fileName = `${resultData.fileName}_整理總表.xlsx`;
+    const officeSuffix = office ? `_${office}` : '';
+    const fileName = `${resultData.fileName}${officeSuffix}_整理總表.xlsx`;
     XLSX.writeFile(wb, fileName);
 }
 
