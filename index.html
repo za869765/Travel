@@ -58,7 +58,7 @@
     <header>
         <h1>差旅明細整理系統</h1>
         <p>上傳 XLS 旅費彙整表 → 選擇衛生所 → 查看明細與個人小計 → 下載 Excel</p>
-        <p style="opacity:0.6; font-size:12px; margin-top:4px;">v3.2 (2026-04-14)</p>
+        <p style="opacity:0.6; font-size:12px; margin-top:4px;">v3.3 (2026-04-14)</p>
     </header>
 
     <div class="card" id="uploadCard">
@@ -116,6 +116,25 @@
 <script>
 // ===== 全域變數 =====
 let resultData = null;
+
+// ===== 衛生所代碼對照表 =====
+const OFFICE_CODE_MAP = {
+    'z01':'仁德區衛生所','z02':'歸仁鄉衛生所','z03':'關廟區衛生所','z04':'龍崎區衛生所',
+    'z05':'永康區衛生所','z06':'新化區衛生所','z07':'善化區衛生所','z08':'新市區衛生所',
+    'z09':'安定區衛生所','z10':'山上區衛生所','z11':'玉井區衛生所','z12':'楠西區衛生所',
+    'z13':'南化區衛生所','z14':'左鎮區衛生所','z15':'麻豆區衛生所','z16':'下營區衛生所',
+    'z17':'六甲區衛生所','z18':'官田區衛生所','z19':'大內區衛生所','z20':'佳里區衛生所',
+    'z21':'西港區衛生所','z22':'七股區衛生所','z23':'將軍區衛生所','z24':'北門區衛生所',
+    'z25':'學甲區衛生所','z26':'新營區衛生所','z27':'鹽水區衛生所','z28':'白河區衛生所',
+    'z29':'柳營區衛生所','z30':'後壁區衛生所','z31':'東山區衛生所','z32':'東區衛生所',
+    'z33':'南區衛生所','z34':'中西區衛生所','z35':'北區衛生所','z36':'安南區衛生所',
+    'z37':'安平區衛生所'
+};
+function resolveOffice(name) {
+    if (!name) return name;
+    const key = name.trim().toLowerCase();
+    return OFFICE_CODE_MAP[key] || name;
+}
 
 // ===== 上傳處理 =====
 const dropZone = document.getElementById('dropZone');
@@ -209,7 +228,15 @@ function isSkipRow(row) {
 function isValidOffice(name) {
     if (!name) return false;
     const clean = name.replace(/\s/g, '');
-    return clean && !clean.includes('總計') && !clean.includes('合計') && !clean.includes('製表');
+    if (!clean) return false;
+    if (clean.includes('總計') || clean.includes('合計') || clean.includes('製表')) return false;
+    // 接受代碼 (z01~z37)
+    if (OFFICE_CODE_MAP[clean.toLowerCase()]) return true;
+    // 必須含有「衛生所」或「區」等中文地名關鍵字
+    if (clean.includes('衛生所') || clean.includes('衛生局')) return true;
+    if (/[\u4e00-\u9fff].*區/.test(clean)) return true;
+    if (clean === '(傳票明細)') return true;
+    return false;
 }
 
 function safeFloat(v) {
@@ -351,7 +378,7 @@ function extractOvertimeDetail(sheet, sheetName, fileLabel) {
         const row = getRow(sheet, r);
         if (isSkipRow(row) || !row.some(v => String(v).trim())) continue;
         let office = String(row[officeCol] || '').trim();
-        if (office && (office.includes('衛生所') || office.includes('區'))) {
+        if (office && (office.includes('衛生所') || office.includes('區') || OFFICE_CODE_MAP[office.toLowerCase()])) {
             if (!office.includes('衛生所') && office.includes('區')) office += '衛生所';
             currentOffice = office;
         }
@@ -435,7 +462,7 @@ function extractTravelDetail(sheet, sheetName, fileLabel) {
         const row = getRow(sheet, r);
         if (isSkipRow(row) || !row.some(v => String(v).trim())) continue;
         let office = String(row[officeCol] || '').trim();
-        if (office && (office.includes('衛生所') || office.includes('區'))) {
+        if (office && (office.includes('衛生所') || office.includes('區') || OFFICE_CODE_MAP[office.toLowerCase()])) {
             if (!office.includes('衛生所') && office.includes('區')) office += '衛生所';
             currentOffice = office;
         }
@@ -610,6 +637,9 @@ function processFile(file) {
             });
 
             fill.style.width = '80%';
+
+            // 代碼轉換為衛生所名稱 (z20 → 佳里區衛生所)
+            allRecords.forEach(r => { r.office = resolveOffice(r.office); });
 
             // 過濾無效衛生所名稱
             const validRecords = allRecords.filter(r => isValidOffice(r.office));
