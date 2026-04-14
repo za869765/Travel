@@ -60,7 +60,7 @@
     <header>
         <h1>差旅明細整理系統</h1>
         <p>上傳 XLS 旅費彙整表 → 選擇衛生所 → 查看明細與個人小計 → 下載 Excel</p>
-        <p style="opacity:0.6; font-size:12px; margin-top:4px;">v4.8 (2026-04-14)</p>
+        <p style="opacity:0.6; font-size:12px; margin-top:4px;">v4.9 (2026-04-14)</p>
     </header>
 
     <div class="card" id="uploadCard">
@@ -771,9 +771,14 @@ function showResult() {
     sel.innerHTML = '<option value="">-- 全部衛生所 --</option>';
     r.offices.forEach(o => { sel.innerHTML += `<option value="${o}">${o}</option>`; });
 
-    // 預設選擇佳里區衛生所
-    const defaultOffice = r.offices.find(o => o.includes('佳里'));
-    if (defaultOffice) sel.value = defaultOffice;
+    // 預設選擇：上次使用的衛生所 > 佳里區衛生所 > 全部
+    const lastOffice = localStorage.getItem('lastOffice');
+    if (lastOffice && r.offices.includes(lastOffice)) {
+        sel.value = lastOffice;
+    } else {
+        const defaultOffice = r.offices.find(o => o.includes('佳里'));
+        if (defaultOffice) sel.value = defaultOffice;
+    }
 
     filterByOffice();
 }
@@ -781,6 +786,7 @@ function showResult() {
 function filterByOffice() {
     if (!resultData) return;
     const office = document.getElementById('officeSelect').value;
+    localStorage.setItem('lastOffice', office);
     const records = office ? resultData.allRecords.filter(r => r.office === office) : resultData.allRecords;
     const total = records.reduce((s, r) => s + r.amount, 0);
 
