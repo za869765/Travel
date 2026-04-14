@@ -178,7 +178,7 @@ function resetPage() {
 
 // ===== 從檔名提取標題 =====
 function extractFileTitle(filename) {
-    const name = filename.replace(/\.xlsx?$/i, '');
+    const name = filename.replace(/\.(xlsx?|csv)$/i, '');
     // 格式1: "79,054元115年衛生所第3次旅費彙整表 (1)" → "115年衛生所第3次旅費"
     let m = name.match(/[\d,]+元(\d+年衛生所第\d+次[^\s(（]+)/);
     if (m) return m[1].replace(/彙整表$/, '').replace(/員整表$/, '');
@@ -660,7 +660,7 @@ function extractExpenseReportSheet(sheet, sheetName) {
     const ncols = sheetCols(sheet);
     const records = [];
 
-    // 從 row 2 (index 2) col A 取用途
+    // 從前5列 col A 取用途
     let purpose = sheetName;
     for (let r = 0; r < Math.min(nrows, 5); r++) {
         const val = String(getRow(sheet, r)[0] || '').trim();
@@ -673,14 +673,12 @@ function extractExpenseReportSheet(sheet, sheetName) {
     // 判斷費用類型
     let feeType = '差旅費';
     if (purpose.includes('加班')) feeType = '加班費';
-    else if (!purpose.includes('交通') && !purpose.includes('差旅') && !purpose.includes('旅費') && !purpose.includes('訪視') && !purpose.includes('都治')) {
+    else if (!purpose.includes('交通') && !purpose.includes('差旅') && !purpose.includes('旅費') && !purpose.includes('訪視') && !purpose.includes('都治') && !purpose.includes('檢討')) {
         feeType = '其他費用';
     }
 
-    const hasRightPanel = ncols >= 9;
-
-    if (hasRightPanel) {
-        // 右側面板：找子標題列 (衛生所 | 領受人)
+    // === 策略1：右側面板（cols F+）找 衛生所|領受人 子標題 ===
+    if (ncols >= 9) {
         let startRow = -1;
         let officeCol = 5, personCol = 6, amountCol = 8, noteCol = 10;
 
@@ -700,65 +698,74 @@ function extractExpenseReportSheet(sheet, sheetName) {
                 break;
             }
         }
-        if (startRow < 0) startRow = 6;
 
-        for (let r = startRow; r < nrows; r++) {
-            const row = getRow(sheet, r);
-            const office = String(row[officeCol] || '').trim();
-            const person = String(row[personCol] || '').trim();
-            const amountRaw = String(row[amountCol] || '').trim();
-            const amount = safeFloat(row[amountCol]);
-            const note = noteCol < ncols ? String(row[noteCol] || '').trim() : '';
+        if (startRow >= 0) {
+            for (let r = startRow; r < nrows; r++) {
+                const row = getRow(sheet, r);
+                const office = String(row[officeCol] || '').trim();
+                const person = String(row[personCol] || '').trim();
+                const amountRaw = String(row[amountCol] || '').trim();
+                const amount = safeFloat(row[amountCol]);
+                const note = noteCol < ncols ? String(row[noteCol] || '').trim() : '';
 
-            // 跳過合計、空行、X 條目
-            if (!office || office === '合計' || office === '總計' || office.includes('合計')) continue;
-            if (person === 'X' || amountRaw === 'X') continue;
-            if (!person || amount <= 0) continue;
+                if (!office || office === '合計' || office === '總計' || office.includes('合計')) continue;
+                if (person === 'X' || amountRaw === 'X') continue;
+                if (!person || amount <= 0) continue;
 
-            records.push({
-                office: office,
-                person: person,
-                amount: amount,
-                sheet: purpose || sheetName,
-                type: feeType,
-                reason: note || purpose
-            });
-        }
-    } else {
-        // 僅左側面板（如 sheet 4）：編號, 鄉鎮別, 金額
-        let startRow = 4;
-        let officeCol = 1, amountCol = 2;
-        for (let r = 0; r < Math.min(nrows, 6); r++) {
-            const row = getRow(sheet, r);
-            const texts = row.map(v => String(v).trim());
-            if (texts.includes('編號') || texts.includes('鄉鎮別')) {
-                startRow = r + 1;
-                texts.forEach((s, c) => {
-                    if (s === '鄉鎮別' || s.includes('衛生所')) officeCol = c;
-                    if (s === '金額') amountCol = c;
-                });
-                break;
+                records.push({ office, person, amount, sheet: purpose || sheetName, type: feeType, reason: note || purpose });
             }
+            if (records.length > 0) return records;
         }
+    }
 
-        for (let r = startRow; r < nrows; r++) {
-            const row = getRow(sheet, r);
-            if (isSkipRow(row)) continue;
-            const zCode = String(row[0] || '').trim();
-            const office = String(row[officeCol] || '').trim();
-            const amount = safeFloat(row[amountCol]);
-            if (!zCode || !/^z\d{2}$/i.test(zCode)) continue;
-            if (amount <= 0) continue;
+    // === 策略2：簡易格式 衛生所|領受人|金額 標題列 ===
+    for (let r = 0; r < Math.min(nrows, 8); r++) {
+        const row = getRow(sheet, r);
+        const texts = row.map(v => String(v).replace(/\s/g, '').trim());
+        let sOfficeCol = -1, sPersonCol = -1, sAmountCol = -1;
+        texts.forEach((s, c) => {
+            if (s === '衛生所' || s.includes('所別')) sOfficeCol = c;
+            if (s === '領受人' || s === '姓名') sPersonCol = c;
+            if (s === '金額' && sAmountCol < 0) sAmountCol = c;
+        });
+        if (sOfficeCol >= 0 && sPersonCol >= 0 && sAmountCol >= 0) {
+            for (let dr = r + 1; dr < nrows; dr++) {
+                const drow = getRow(sheet, dr);
+                if (isSkipRow(drow)) continue;
+                const office = String(drow[sOfficeCol] || '').trim();
+                const person = String(drow[sPersonCol] || '').trim();
+                const amount = safeFloat(drow[sAmountCol]);
+                if (!office || amount <= 0) continue;
+                if (!office.includes('衛生所') && !office.includes('區')) continue;
+                records.push({ office, person, amount, sheet: purpose || sheetName, type: feeType, reason: purpose });
+            }
+            if (records.length > 0) return records;
+        }
+    }
 
-            records.push({
-                office: office,
-                person: '',
-                amount: amount,
-                sheet: purpose || sheetName,
-                type: feeType,
-                reason: purpose
+    // === 策略3：左側面板 z-code 格式（編號|鄉鎮別|金額）===
+    let startRow = 4, officeCol = 1, amountCol = 2;
+    for (let r = 0; r < Math.min(nrows, 6); r++) {
+        const row = getRow(sheet, r);
+        const texts = row.map(v => String(v).trim());
+        if (texts.includes('編號') || texts.includes('鄉鎮別')) {
+            startRow = r + 1;
+            texts.forEach((s, c) => {
+                if (s === '鄉鎮別' || s.includes('衛生所')) officeCol = c;
+                if (s === '金額') amountCol = c;
             });
+            break;
         }
+    }
+    for (let r = startRow; r < nrows; r++) {
+        const row = getRow(sheet, r);
+        if (isSkipRow(row)) continue;
+        const zCode = String(row[0] || '').trim();
+        const office = String(row[officeCol] || '').trim();
+        const amount = safeFloat(row[amountCol]);
+        if (!zCode || !/^z\d{2}$/i.test(zCode)) continue;
+        if (amount <= 0) continue;
+        records.push({ office, person: '', amount, sheet: purpose || sheetName, type: feeType, reason: purpose });
     }
 
     return records;
@@ -878,7 +885,7 @@ function processFile(file) {
                 grandTotal,
                 unknownCount,
                 personCount: personList.length,
-                fileName: file.name.replace(/\.xlsx?$/i, ''),
+                fileName: file.name.replace(/\.(xlsx?|csv)$/i, ''),
                 fileTitle: extractFileTitle(file.name),
                 wb  // 保留原始 workbook 供下載用
             };
