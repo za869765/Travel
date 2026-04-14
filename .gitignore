@@ -1,0 +1,13 @@
+# Input/Output data files
+input/*.xls
+input/*.xlsx
+output/*.xlsx
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# IDE
+.vscode/
+.idea/
