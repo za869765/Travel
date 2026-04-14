@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>差旅明細整理系統</title>
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: "Microsoft JhengHei", "Segoe UI", sans-serif; background: #f0f4f8; min-height: 100vh; }
+        .container { max-width: 1000px; margin: 0 auto; padding: 20px; }
+        header { background: linear-gradient(135deg, #1e3a5f 0%, #4a90d9 100%); color: white; padding: 30px; border-radius: 12px; margin-bottom: 24px; text-align: center; box-shadow: 0 4px 15px rgba(0,0,0,0.15); }
+        header h1 { font-size: 28px; margin-bottom: 8px; }
+        header p { opacity: 0.85; font-size: 15px; }
+        .card { background: white; border-radius: 12px; padding: 24px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+        .card h2 { font-size: 18px; color: #1e3a5f; margin-bottom: 16px; }
+        .upload-zone { border: 2px dashed #b0c4de; border-radius: 10px; padding: 40px; text-align: center; cursor: pointer; transition: all 0.3s; background: #f8fafc; }
+        .upload-zone:hover, .upload-zone.dragover { border-color: #4a90d9; background: #eef4fb; transform: scale(1.01); }
+        .upload-zone .icon { font-size: 48px; margin-bottom: 12px; }
+        .upload-zone p { color: #666; margin-bottom: 8px; }
+        .upload-zone .hint { font-size: 13px; color: #999; }
+        #fileInput { display: none; }
+        .file-info { margin-top: 16px; display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background: #eef4fb; border-radius: 8px; border: 1px solid #d5e3f0; }
+        .file-info .name { font-weight: 600; color: #1e3a5f; }
+        .file-info .size { color: #888; font-size: 13px; }
+        .btn { display: inline-flex; align-items: center; gap: 8px; padding: 12px 28px; border: none; border-radius: 8px; font-size: 16px; font-weight: 600; cursor: pointer; transition: all 0.3s; }
+        .btn-success { background: #27ae60; color: white; }
+        .btn-success:hover { background: #219a52; }
+        .btn-outline { background: white; color: #4a90d9; border: 2px solid #4a90d9; }
+        .btn-outline:hover { background: #eef4fb; }
+        .btn-group { display: flex; gap: 12px; margin-top: 16px; justify-content: center; flex-wrap: wrap; }
+        .progress-area { display: none; }
+        .progress-bar { height: 6px; background: #e8edf2; border-radius: 3px; overflow: hidden; margin-bottom: 12px; }
+        .progress-bar .fill { height: 100%; background: linear-gradient(90deg, #4a90d9, #27ae60); border-radius: 3px; transition: width 0.3s; width: 0%; }
+        .log { background: #1e2a3a; color: #a8d8a8; border-radius: 8px; padding: 16px; font-family: "Consolas", monospace; font-size: 13px; max-height: 180px; overflow-y: auto; line-height: 1.6; }
+        .result-area { display: none; }
+        .result-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 20px; }
+        .stat-card { background: linear-gradient(135deg, #f8fafc, #eef4fb); padding: 14px; border-radius: 10px; text-align: center; border: 1px solid #d5e3f0; }
+        .stat-card .number { font-size: 24px; font-weight: 700; color: #1e3a5f; }
+        .stat-card .label { font-size: 12px; color: #666; margin-top: 4px; }
+        table { width: 100%; border-collapse: collapse; font-size: 14px; margin-top: 8px; }
+        th { background: #4a90d9; color: white; padding: 10px 8px; text-align: left; position: sticky; top: 0; z-index: 1; }
+        td { padding: 8px; border-bottom: 1px solid #eee; }
+        tr:hover { background: #f0f7ff; }
+        .total-row { background: #d9e2f3 !important; font-weight: 700; }
+        .table-wrap { max-height: 450px; overflow-y: auto; border: 1px solid #e8edf2; border-radius: 8px; }
+        .text-right { text-align: right; }
+        .filter-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+        .filter-bar label { font-weight: 600; color: #1e3a5f; white-space: nowrap; }
+        .filter-bar select { padding: 10px 14px; border: 2px solid #d5e3f0; border-radius: 8px; font-size: 15px; font-family: inherit; background: white; min-width: 220px; cursor: pointer; }
+        .filter-bar select:focus { border-color: #4a90d9; outline: none; }
+        .selected-info { background: #fff8e1; border: 1px solid #ffc107; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; font-size: 15px; }
+        .selected-info strong { color: #e65100; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <header>
+        <h1>差旅明細整理系統</h1>
+        <p>上傳 XLS 旅費彙整表 → 選擇衛生所 → 查看明細與個人小計 → 下載 Excel</p>
+    </header>
+
+    <div class="card" id="uploadCard">
+        <h2>📤 上傳檔案（一次一份，上傳即處理）</h2>
+        <div class="upload-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+            <div class="icon">📁</div>
+            <p>點擊或拖曳 XLS 檔案到此處</p>
+            <div class="hint">支援 .xls 格式，上傳後自動處理</div>
+        </div>
+        <input type="file" id="fileInput" accept=".xls,.xlsx">
+        <div id="fileInfo" style="display:none"></div>
+    </div>
+
+    <div class="progress-area" id="progressArea">
+        <div class="card">
+            <h2>⏳ 處理中...</h2>
+            <div class="progress-bar"><div class="fill" id="progressFill"></div></div>
+            <div class="log" id="logArea"></div>
+        </div>
+    </div>
+
+    <div class="result-area" id="resultArea">
+        <div class="card">
+            <h2>📊 處理結果</h2>
+            <div class="result-summary" id="resultSummary"></div>
+            <div class="btn-group">
+                <button class="btn btn-success" onclick="downloadExcel()">📥 下載 Excel 總表</button>
+                <button class="btn btn-outline" onclick="resetPage()">🔄 處理另一份</button>
+            </div>
+        </div>
+
+        <div class="card" id="filterCard">
+            <h2>🏥 選擇衛生所</h2>
+            <div class="filter-bar">
+                <label>衛生所：</label>
+                <select id="officeSelect" onchange="filterByOffice()">
+                    <option value="">-- 全部衛生所 --</option>
+                </select>
+            </div>
+            <div id="selectedInfo" style="display:none" class="selected-info"></div>
+        </div>
+
+        <div class="card" id="detailCard" style="display:none">
+            <h2 id="detailTitle">📋 出差明細</h2>
+            <div class="table-wrap" id="officeTable"></div>
+        </div>
+
+        <div class="card" id="personCard" style="display:none">
+            <h2 id="personTitle">👤 個人小計</h2>
+            <div class="table-wrap" id="personDetail"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+// ===== 全域變數 =====
+let resultData = null;
+
+// ===== 上傳處理 =====
+const dropZone = document.getElementById('dropZone');
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.classList.remove('dragover');
+    if (e.dataTransfer.files.length > 0) handleFile(e.dataTransfer.files[0]);
+});
+document.getElementById('fileInput').addEventListener('change', e => {
+    if (e.target.files.length > 0) handleFile(e.target.files[0]);
+});
+
+function handleFile(file) {
+    if (!file.name.match(/\.xlsx?$/i)) { alert('請上傳 .xls 格式檔案'); return; }
+
+    // 顯示檔案資訊
+    document.getElementById('fileInfo').style.display = 'flex';
+    document.getElementById('fileInfo').className = 'file-info';
+    document.getElementById('fileInfo').innerHTML = `
+        <span class="name">📄 ${file.name}</span>
+        <span class="size">${(file.size / 1024).toFixed(1)} KB</span>
+    `;
+
+    // 直接開始處理
+    processFile(file);
+}
+
+function resetPage() {
+    resultData = null;
+    document.getElementById('fileInput').value = '';
+    document.getElementById('fileInfo').style.display = 'none';
+    document.getElementById('progressArea').style.display = 'none';
+    document.getElementById('resultArea').style.display = 'none';
+    document.getElementById('uploadCard').style.display = 'block';
+}
+
+// ===== 姓名拆分 =====
+function splitPersons(personStr, totalAmount) {
+    if (!personStr || !personStr.trim()) return [{ name: '', amount: totalAmount }];
+    let text = personStr.trim().replace(/^\d+\/\d+\s*/, ''); // 移除前面日期
+
+    // 用 + 分割
+    const parts = text.split(/[+＋]/);
+    let results = [];
+
+    for (let part of parts) {
+        part = part.trim();
+        if (!part) continue;
+        // 用頓號分割
+        const subs = part.split(/[、,，]/);
+        for (let sp of subs) {
+            sp = sp.trim();
+            if (!sp) continue;
+            // 姓名$金額*N人
+            let m = sp.match(/^(.+?)\$(\d+(?:\.\d+)?)\*(\d+)人?$/);
+            if (m) { results.push({ name: m[1].trim(), amount: parseFloat(m[2]) }); continue; }
+            // 姓名$金額
+            m = sp.match(/^(.+?)\$(\d+(?:\.\d+)?)$/);
+            if (m) { results.push({ name: m[1].trim(), amount: parseFloat(m[2]) }); continue; }
+            // 純姓名
+            results.push({ name: sp, amount: 0 });
+        }
+    }
+
+    if (results.length === 1 && results[0].amount === 0)
+        return [{ name: results[0].name, amount: totalAmount }];
+
+    // 分配沒金額的人
+    const hasAmt = results.filter(r => r.amount > 0);
+    const noAmt = results.filter(r => r.amount === 0);
+    if (noAmt.length > 0 && hasAmt.length > 0) {
+        const used = hasAmt.reduce((s, r) => s + r.amount, 0);
+        const per = (totalAmount - used) / noAmt.length;
+        return [...hasAmt, ...noAmt.map(r => ({ name: r.name, amount: per }))];
+    }
+    if (noAmt.length > 0 && hasAmt.length === 0) {
+        const per = totalAmount / results.length;
+        return results.map(r => ({ name: r.name, amount: per }));
+    }
+    return results.length > 0 ? results : [{ name: '', amount: totalAmount }];
+}
+
+// ===== 跳過行判斷 =====
+function isSkipRow(row) {
+    const t = row.map(v => String(v)).join('').replace(/\s/g, '');
+    return t.includes('合計') || t.includes('總計') || t.includes('製表') || t.includes('股長');
+}
+
+function isValidOffice(name) {
+    if (!name) return false;
+    const clean = name.replace(/\s/g, '');
+    return clean && !clean.includes('總計') && !clean.includes('合計');
+}
+
+function safeFloat(v) { const f = parseFloat(v); return isNaN(f) ? 0 : f; }
+
+function getRow(sheet, r) {
+    const range = XLSX.utils.decode_range(sheet['!ref'] || 'A1');
+    const row = [];
+    for (let c = range.s.c; c <= range.e.c; c++) {
+        const addr = XLSX.utils.encode_cell({ r, c });
+        const cell = sheet[addr];
+        row.push(cell ? (cell.v !== undefined ? cell.v : '') : '');
+    }
+    return row;
+}
+
+function sheetRows(sheet) {
+    const range = XLSX.utils.decode_range(sheet['!ref'] || 'A1');
+    return range.e.r + 1;
+}
+
+function sheetCols(sheet) {
+    const range = XLSX.utils.decode_range(sheet['!ref'] || 'A1');
+    return range.e.c + 1;
+}
+
+// ===== 偵測分頁類型 =====
+function detectSheetType(sheet, name, idx) {
+    const nrows = sheetRows(sheet);
+    const ncols = sheetCols(sheet);
+    if (nrows < 3) return 'empty';
+
+    let hasData = false;
+    for (let r = 0; r < Math.min(nrows, 10); r++) {
+        const row = getRow(sheet, r);
+        if (row.some(v => String(v).trim())) { hasData = true; break; }
+    }
+    if (!hasData) return 'empty';
+
+    // 彙總表
+    if (name.includes('彙總') || idx === 0) {
+        for (let r = 0; r < Math.min(nrows, 3); r++) {
+            const t = getRow(sheet, r).join('');
+            if (t.includes('匯款明細') || t.includes('彙總')) return 'summary';
+        }
+    }
+
+    let headerText = '';
+    for (let r = 0; r < Math.min(nrows, 10); r++) headerText += getRow(sheet, r).join('');
+
+    if (ncols <= 4) {
+        for (let r = 0; r < Math.min(nrows, 5); r++) {
+            const t = getRow(sheet, r).join('');
+            if (t.includes('編號') && (t.includes('鄉鎮別') || t.includes('金額')))
+                return 'overtime_summary';
+        }
+    }
+
+    if (headerText.includes('姓   名') && headerText.includes('出   差')) return 'travel_traffic';
+    if (headerText.includes('領受人')) {
+        return (name.includes('加班') || headerText.includes('加班')) ? 'overtime_detail' : 'travel_detail';
+    }
+    if (headerText.includes('旅費明細') || headerText.includes('金額(元)') || headerText.includes('金額（元）'))
+        return 'travel_list';
+
+    if (ncols <= 5) {
+        for (let r = 0; r < Math.min(nrows, 5); r++) {
+            const t = getRow(sheet, r).join('');
+            if (t.includes('衛生所') && (t.includes('金額') || t.includes('備註')))
+                return 'travel_list';
+        }
+    }
+    return 'empty';
+}
+
+// ===== 解析各類型 =====
+function extractOvertimeDetail(sheet, sheetName, fileLabel) {
+    const nrows = sheetRows(sheet);
+    const records = [];
+    let currentOffice = '', amountCol = 5, noteCol = 7, startRow = 5;
+
+    for (let r = 0; r < Math.min(nrows, 10); r++) {
+        const row = getRow(sheet, r);
+        const t = row.join('');
+        if (t.includes('領受人')) {
+            startRow = r + 1;
+            row.forEach((v, c) => {
+                if (String(v).includes('金額')) amountCol = c;
+                if (String(v).includes('備註')) noteCol = c;
+            });
+            break;
+        }
+    }
+
+    for (let r = startRow; r < nrows; r++) {
+        const row = getRow(sheet, r);
+        if (isSkipRow(row) || !row.some(v => String(v).trim())) continue;
+        let office = String(row[1] || '').trim();
+        if (office && (office.includes('衛生所') || office.includes('區'))) {
+            if (!office.includes('衛生所') && office.includes('區')) office += '衛生所';
+            currentOffice = office;
+        }
+        const person = String(row[2] || '').trim();
+        let amount = safeFloat(row[amountCol]) || safeFloat(row[5]) || safeFloat(row[4]);
+        const note = String(row[noteCol] || '').trim();
+        if (amount > 0 && currentOffice) {
+            for (const sp of splitPersons(person, amount)) {
+                records.push({ office: currentOffice, person: sp.name, amount: sp.amount, sheet: sheetName, type: '加班費', reason: note || sheetName });
+            }
+        }
+    }
+    return records;
+}
+
+function extractOvertimeSummary(sheet, sheetName, fileLabel) {
+    const nrows = sheetRows(sheet);
+    const records = [];
+    let purpose = sheetName;
+    for (let r = 0; r < Math.min(nrows, 3); r++) {
+        const t = getRow(sheet, r).join('');
+        if (t.includes('用途')) { purpose = t.replace(/用途[：:]/, '').trim(); break; }
+    }
+    let feeType = '加班費';
+    if (purpose.includes('差旅') || purpose.includes('旅費')) feeType = '差旅費';
+    else if (purpose.includes('誤餐')) feeType = '誤餐費';
+    else if (purpose.includes('醫護')) feeType = '醫護費用';
+
+    for (let r = 2; r < nrows; r++) {
+        const row = getRow(sheet, r);
+        if (isSkipRow(row)) continue;
+        const office = String(row[1] || '').trim();
+        const amount = safeFloat(row[2]);
+        if (amount > 0 && office && isValidOffice(office)) {
+            records.push({ office, person: '', amount, sheet: sheetName, type: feeType, reason: purpose });
+        }
+    }
+    return records;
+}
+
+function extractTravelDetail(sheet, sheetName, fileLabel) {
+    const nrows = sheetRows(sheet);
+    const records = [];
+    let currentOffice = '', amountCol = 5, noteCol = 7, startRow = 5;
+
+    for (let r = 0; r < Math.min(nrows, 10); r++) {
+        const row = getRow(sheet, r);
+        if (row.join('').includes('領受人')) {
+            startRow = r + 1;
+            row.forEach((v, c) => {
+                if (String(v).includes('金額')) amountCol = c;
+                if (String(v).includes('備註')) noteCol = c;
+            });
+            break;
+        }
+    }
+
+    for (let r = startRow; r < nrows; r++) {
+        const row = getRow(sheet, r);
+        if (isSkipRow(row) || !row.some(v => String(v).trim())) continue;
+        let office = String(row[1] || '').trim();
+        if (office && (office.includes('衛生所') || office.includes('區'))) {
+            if (!office.includes('衛生所') && office.includes('區')) office += '衛生所';
+            currentOffice = office;
+        }
+        const person = String(row[2] || '').trim();
+        let amount = safeFloat(row[amountCol]) || safeFloat(row[5]);
+        const note = String(row[noteCol] || '').trim();
+        if (amount > 0 && currentOffice) {
+            for (const sp of splitPersons(person, amount)) {
+                records.push({ office: currentOffice, person: sp.name, amount: sp.amount, sheet: sheetName, type: '差旅費', reason: note || sheetName });
+            }
+        }
+    }
+    return records;
+}
+
+function extractTravelTraffic(sheet, sheetName, fileLabel) {
+    const nrows = sheetRows(sheet);
+    const records = [];
+    let startRow = 4;
+    for (let r = 0; r < Math.min(nrows, 10); r++) {
+        if (getRow(sheet, r).join('').match(/姓.*名/)) { startRow = r + 1; break; }
+    }
+
+    for (let r = startRow; r < nrows; r++) {
+        const row = getRow(sheet, r);
+        if (isSkipRow(row) || !row.some(v => String(v).trim())) continue;
+        const person = String(row[0] || '').trim();
+        const amount = safeFloat(row[4]);
+        let district = String(row[5] || '').trim();
+        const note = String(row[7] || '').trim();
+        if (amount > 0 && person) {
+            const office = district && !district.includes('衛生所') ? district + '衛生所' : district;
+            for (const sp of splitPersons(person, amount)) {
+                records.push({ office, person: sp.name, amount: sp.amount, sheet: sheetName, type: '差旅費', reason: note || sheetName });
+            }
+        }
+    }
+    return records;
+}
+
+function extractTravelList(sheet, sheetName, fileLabel) {
+    const nrows = sheetRows(sheet);
+    const records = [];
+    let startRow = 3;
+    for (let r = 0; r < Math.min(nrows, 5); r++) {
+        const t = getRow(sheet, r).join('');
+        if (t.includes('衛生所') && (t.includes('金額') || t.includes('備註'))) { startRow = r + 1; break; }
+    }
+
+    for (let r = startRow; r < nrows; r++) {
+        const row = getRow(sheet, r);
+        if (isSkipRow(row)) continue;
+        let officeRaw = String(row[0] || '').trim();
+        const amount = safeFloat(row[1]);
+        const note = String(row[2] || '').trim();
+        if (amount > 0 && officeRaw) {
+            let office = officeRaw.replace(/^\d+\.?\s*/, '').trim() || officeRaw;
+            let person = '';
+            if (note) {
+                const m = note.match(/\d+\/\d+\s*(.+)/);
+                person = m ? m[1].trim() : note;
+            }
+            for (const sp of splitPersons(person, amount)) {
+                records.push({ office, person: sp.name, amount: sp.amount, sheet: sheetName, type: '差旅費', reason: sheetName });
+            }
+        }
+    }
+    return records;
+}
+
+// ===== 主處理 =====
+function processFile(file) {
+    document.getElementById('progressArea').style.display = 'block';
+    document.getElementById('resultArea').style.display = 'none';
+    const log = document.getElementById('logArea');
+    const fill = document.getElementById('progressFill');
+    log.innerHTML = '';
+    function addLog(msg) { log.innerHTML += msg + '\n'; log.scrollTop = log.scrollHeight; }
+
+    addLog('📤 讀取檔案中...');
+    fill.style.width = '20%';
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            addLog('📖 解析 XLS...');
+            fill.style.width = '40%';
+
+            const data = new Uint8Array(e.target.result);
+            const wb = XLSX.read(data, { type: 'array' });
+            const allRecords = [];
+
+            addLog(`📂 ${file.name} - 共 ${wb.SheetNames.length} 個分頁`);
+            fill.style.width = '50%';
+
+            const typeLabels = {
+                'overtime_detail': '加班明細', 'overtime_summary': '費用彙整',
+                'travel_detail': '差旅明細', 'travel_traffic': '交通差旅',
+                'travel_list': '旅費清單', 'summary': '彙總表'
+            };
+
+            wb.SheetNames.forEach((name, idx) => {
+                const sheet = wb.Sheets[name];
+                const type = detectSheetType(sheet, name, idx);
+                if (type === 'empty') return;
+
+                let recs = [];
+                if (type === 'overtime_detail') recs = extractOvertimeDetail(sheet, name);
+                else if (type === 'overtime_summary') recs = extractOvertimeSummary(sheet, name);
+                else if (type === 'travel_detail') recs = extractTravelDetail(sheet, name);
+                else if (type === 'travel_traffic') recs = extractTravelTraffic(sheet, name);
+                else if (type === 'travel_list') recs = extractTravelList(sheet, name);
+
+                allRecords.push(...recs);
+                if (recs.length > 0 || type === 'summary')
+                    addLog(`   [${idx}] ${name} → ${typeLabels[type] || type} (${recs.length} 筆)`);
+            });
+
+            fill.style.width = '80%';
+
+            // 過濾無效衛生所名稱
+            const validRecords = allRecords.filter(r => isValidOffice(r.office));
+
+            // 個人小計
+            const personMap = {};
+            validRecords.forEach(r => {
+                const key = r.office + '|' + r.person;
+                if (!personMap[key]) personMap[key] = { office: r.office, person: r.person };
+                personMap[key][r.type] = (personMap[key][r.type] || 0) + r.amount;
+            });
+            const personList = Object.values(personMap).filter(p => p.person).sort((a, b) => a.office.localeCompare(b.office));
+
+            // 衛生所清單
+            const offices = [...new Set(validRecords.map(r => r.office))].filter(isValidOffice).sort();
+            const overtimeCount = validRecords.filter(r => r.type === '加班費').length;
+            const grandTotal = validRecords.reduce((s, r) => s + r.amount, 0);
+
+            addLog(`\n📊 共 ${validRecords.length} 筆明細（姓名已拆分）`);
+            addLog(`🏥 衛生所: ${offices.length} 個`);
+            addLog(`👤 不重複人員: ${personList.length} 人`);
+            addLog('✅ 處理完成！');
+            fill.style.width = '100%';
+
+            resultData = {
+                allRecords: validRecords,
+                offices,
+                personList,
+                overtimeCount,
+                grandTotal,
+                personCount: personList.length,
+                fileName: file.name.replace(/\.xlsx?$/, ''),
+                wb  // 保留原始 workbook 供下載用
+            };
+
+            showResult();
+
+        } catch (err) {
+            addLog('❌ 錯誤: ' + err.message);
+            console.error(err);
+        }
+    };
+    reader.readAsArrayBuffer(file);
+}
+
+// ===== 顯示結果 =====
+function showResult() {
+    const r = resultData;
+    document.getElementById('resultArea').style.display = 'block';
+
+    document.getElementById('resultSummary').innerHTML = `
+        <div class="stat-card"><div class="number">${r.allRecords.length}</div><div class="label">全部明細筆數</div></div>
+        <div class="stat-card"><div class="number">${r.offices.length}</div><div class="label">衛生所數</div></div>
+        <div class="stat-card"><div class="number">${r.overtimeCount}</div><div class="label">加班費筆數</div></div>
+        <div class="stat-card"><div class="number">${r.personCount}</div><div class="label">不重複人員</div></div>
+        <div class="stat-card"><div class="number">${r.grandTotal.toLocaleString()}</div><div class="label">全部總金額</div></div>
+    `;
+
+    const sel = document.getElementById('officeSelect');
+    sel.innerHTML = '<option value="">-- 全部衛生所 --</option>';
+    r.offices.forEach(o => { sel.innerHTML += `<option value="${o}">${o}</option>`; });
+
+    filterByOffice();
+}
+
+function filterByOffice() {
+    if (!resultData) return;
+    const office = document.getElementById('officeSelect').value;
+    const records = office ? resultData.allRecords.filter(r => r.office === office) : resultData.allRecords;
+    const total = records.reduce((s, r) => s + r.amount, 0);
+
+    // 資訊列
+    if (office) {
+        document.getElementById('selectedInfo').style.display = 'block';
+        document.getElementById('selectedInfo').innerHTML =
+            `<strong>${office}</strong>　共 <strong>${records.length}</strong> 筆，合計 <strong>${total.toLocaleString()}</strong> 元`;
+    } else {
+        document.getElementById('selectedInfo').style.display = 'none';
+    }
+
+    // 明細表
+    document.getElementById('detailCard').style.display = 'block';
+    document.getElementById('detailTitle').textContent = office ? `📋 ${office} 出差明細` : '📋 全部出差明細';
+
+    const officeCol = office ? '' : '<th>衛生所</th>';
+    const colSpan = office ? 3 : 4;
+    let rows = records.map(r => `<tr>${office ? '' : `<td>${r.office}</td>`}<td>${r.sheet}</td><td>${r.type}</td><td>${r.person}</td><td class="text-right">${r.amount.toLocaleString()}</td><td>${r.reason}</td></tr>`).join('');
+    document.getElementById('officeTable').innerHTML = `
+        <table><tr>${officeCol}<th>分頁</th><th>類型</th><th>姓名</th><th>金額</th><th>事由</th></tr>
+        ${rows}
+        <tr class="total-row"><td colspan="${colSpan}" class="text-right">合計</td><td class="text-right">${total.toLocaleString()}</td><td></td></tr></table>`;
+
+    // 個人小計
+    renderPersonTable(office);
+}
+
+function renderPersonTable(filterOffice) {
+    if (!resultData) return;
+    let data = filterOffice ? resultData.personList.filter(p => p.office === filterOffice) : resultData.personList;
+
+    document.getElementById('personCard').style.display = 'block';
+    document.getElementById('personTitle').textContent = filterOffice ? `👤 ${filterOffice} 個人小計` : '👤 全部個人小計';
+
+    const feeTypes = ['差旅費', '加班費', '誤餐費', '醫護費用'];
+    let gt = {};
+    feeTypes.forEach(t => gt[t] = 0);
+
+    const officeCol = filterOffice ? '' : '<th>衛生所</th>';
+    let prows = data.map(p => {
+        let rowTotal = 0;
+        let cells = '';
+        feeTypes.forEach(t => {
+            const v = p[t] || 0;
+            gt[t] += v;
+            rowTotal += v;
+            cells += `<td class="text-right">${v ? v.toLocaleString() : '-'}</td>`;
+        });
+        return `<tr>${filterOffice ? '' : `<td>${p.office}</td>`}<td>${p.person}</td>${cells}<td class="text-right">${rowTotal.toLocaleString()}</td></tr>`;
+    }).join('');
+
+    let grandTotal = Object.values(gt).reduce((s, v) => s + v, 0);
+    let gtCells = feeTypes.map(t => `<td class="text-right">${gt[t].toLocaleString()}</td>`).join('');
+
+    document.getElementById('personDetail').innerHTML = `
+        <table><tr>${officeCol}<th>姓名</th>${feeTypes.map(t => `<th>${t}</th>`).join('')}<th>總計</th></tr>
+        ${prows}
+        <tr class="total-row">${filterOffice ? '' : '<td></td>'}<td>總計 (${data.length} 人)</td>${gtCells}<td class="text-right">${grandTotal.toLocaleString()}</td></tr></table>`;
+}
+
+// ===== 下載 Excel =====
+function downloadExcel() {
+    if (!resultData) return;
+    const office = document.getElementById('officeSelect').value;
+    const records = office ? resultData.allRecords.filter(r => r.office === office) : resultData.allRecords;
+
+    const wb = XLSX.utils.book_new();
+
+    // Sheet1: 選擇的衛生所明細
+    const title1 = office || '全部';
+    const s1data = [
+        [office ? `${office} 明細` : '全部出差明細'],
+        [],
+        ['分頁', '類型', '衛生所', '姓名', '金額', '事由'],
+        ...records.map(r => [r.sheet, r.type, r.office, r.person, r.amount, r.reason]),
+        ['', '', '', '合計', records.reduce((s, r) => s + r.amount, 0), '']
+    ];
+    const ws1 = XLSX.utils.aoa_to_sheet(s1data);
+    XLSX.utils.book_append_sheet(wb, ws1, (office || '全部明細').substring(0, 31));
+
+    // Sheet2: 個人小計
+    const feeTypes = ['差旅費', '加班費', '誤餐費', '醫護費用'];
+    const personData = office ? resultData.personList.filter(p => p.office === office) : resultData.personList;
+    const s2data = [
+        ['個人小計'],
+        [],
+        ['衛生所', '姓名', ...feeTypes, '總計'],
+        ...personData.map(p => {
+            const vals = feeTypes.map(t => p[t] || 0);
+            return [p.office, p.person, ...vals, vals.reduce((s, v) => s + v, 0)];
+        })
+    ];
+    const ws2 = XLSX.utils.aoa_to_sheet(s2data);
+    XLSX.utils.book_append_sheet(wb, ws2, '個人小計');
+
+    // Sheet3: 全部明細
+    if (office) {
+        const s3data = [
+            ['全部出差明細'],
+            [],
+            ['分頁', '類型', '衛生所', '姓名', '金額', '事由'],
+            ...resultData.allRecords.map(r => [r.sheet, r.type, r.office, r.person, r.amount, r.reason])
+        ];
+        const ws3 = XLSX.utils.aoa_to_sheet(s3data);
+        XLSX.utils.book_append_sheet(wb, ws3, '全部明細');
+    }
+
+    // Sheet4: 加班費彙整
+    const otRecords = resultData.allRecords.filter(r => r.type === '加班費');
+    if (otRecords.length > 0) {
+        const s4data = [
+            ['加班費彙整'],
+            [],
+            ['分頁', '衛生所', '姓名', '金額', '事由'],
+            ...otRecords.map(r => [r.sheet, r.office, r.person, r.amount, r.reason]),
+            ['', '', '合計', otRecords.reduce((s, r) => s + r.amount, 0), '']
+        ];
+        const ws4 = XLSX.utils.aoa_to_sheet(s4data);
+        XLSX.utils.book_append_sheet(wb, ws4, '加班費彙整');
+    }
+
+    const fileName = `${resultData.fileName}_整理總表.xlsx`;
+    XLSX.writeFile(wb, fileName);
+}
+</script>
+</body>
+</html>
