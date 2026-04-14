@@ -464,8 +464,13 @@ def run_process(filepath, original_filename):
 
     log_lines.append(f"\n📊 共解析 {len(all_records)} 筆明細（姓名已拆分）")
 
-    # 收集所有衛生所（去重排序）
-    offices = sorted(set(r["衛生所"] for r in all_records if r["衛生所"]))
+    # 收集所有衛生所（去重排序，過濾無效名稱）
+    skip_names = {"總計", "合計", "總          計", ""}
+    offices = sorted(set(
+        r["衛生所"] for r in all_records
+        if r["衛生所"] and r["衛生所"].replace(" ", "").replace("\u3000", "") not in skip_names
+        and "總" not in r["衛生所"] and "合計" not in r["衛生所"]
+    ))
 
     overtime_records = [r for r in all_records if r["類型"] == "加班費"]
 

@@ -160,7 +160,7 @@ def row_text(row):
 
 def is_skip_row(row):
     """判斷是否為合計/製表等跳過行"""
-    t = row_text(row)
+    t = row_text(row).replace(" ", "").replace("\u3000", "")
     return "合計" in t or "製表" in t or "股長" in t or "總計" in t
 
 
