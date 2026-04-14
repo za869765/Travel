@@ -60,7 +60,7 @@
     <header>
         <h1>差旅明細整理系統</h1>
         <p>將會計室mail的 旅費彙整表.xls 檔案上傳 → 選擇衛生所 → 查看明細與個人小計 → 下載 Excel</p>
-        <p style="font-size:12px; margin-top:4px; text-align:right; font-weight:bold;">v5.2</p>
+        <p style="font-size:12px; margin-top:4px; text-align:right; font-weight:bold;">v5.3</p>
         <p style="font-size:12px; text-align:right; margin-top:6px; color:#ff4444; font-weight:600;">免責聲明：本工具僅供參考，請自行確認內容。</p>
     </header>
 
@@ -1065,7 +1065,10 @@ function downloadExcel() {
     }
 
     ws['!print'] = { orientation: 'portrait', paper: 9, fitToWidth: 1, fitToHeight: 0 }; // A4 縮放至1頁寬
-    ws['!margins'] = { left: 0.4, right: 0.4, top: 0.4, bottom: 0.4, header: 0.2, footer: 0.2 };
+    ws['!margins'] = { left: 0.4, right: 0.4, top: 0.4, bottom: 0.4, header: 0.2, footer: 0.3 };
+    // 頁尾顯示「第X頁，共Y頁」
+    ws['!header'] = { odd: '' };
+    ws['!footer'] = { odd: '&C第 &P 頁，共 &N 頁' };
 
     XLSX.utils.book_append_sheet(wb, ws, (office || '整理總表').substring(0, 31));
 
