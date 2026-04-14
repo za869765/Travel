@@ -60,7 +60,7 @@
     <header>
         <h1>差旅明細整理系統</h1>
         <p>上傳 XLS 旅費彙整表 → 選擇衛生所 → 查看明細與個人小計 → 下載 Excel</p>
-        <p style="opacity:0.6; font-size:12px; margin-top:4px;">v3.7 (2026-04-14)</p>
+        <p style="opacity:0.6; font-size:12px; margin-top:4px;">v3.8 (2026-04-14)</p>
     </header>
 
     <div class="card" id="uploadCard">
@@ -194,10 +194,9 @@ function extractFileTitle(filename) {
 function cleanPersonName(s) {
     if (!s) return '';
     s = s.trim();
-    s = s.replace(/^\d{1,2}[\/.]\d{1,2}日?\s*/, ''); // 去日期 9/24, 11/01, 12.14
-    s = s.replace(/^\$\d+(\.\d+)?\s*/, '');            // 去金額 $157
-    if (/^\d+(\.\d+)?$/.test(s)) return '';             // 純數字不是姓名
-    return s.trim();
+    // 提取純中文姓名（2~4字中文）
+    const m = s.match(/([\u4e00-\u9fff]{2,4})/);
+    return m ? m[1] : '';
 }
 
 function splitPersons(personStr, totalAmount) {
@@ -243,6 +242,15 @@ function splitPersons(personStr, totalAmount) {
         return results.map(r => ({ name: r.name, amount: per }));
     }
     return results.length > 0 ? results : [{ name: '', amount: totalAmount }];
+}
+
+// ===== 清理分頁名稱（去除前導頁碼如 "7", "8.", "13."） =====
+function cleanSheetName(name) {
+    // 有點的：2.支援→支援, 13.11-12月→11-12月, 8.1月→1月
+    let s = name.replace(/^\d+\.\s*/, '');
+    if (s !== name) return s;
+    // 無點的：70126低碳→0126低碳（去掉第一個頁碼數字）
+    return name.replace(/^\d/, '');
 }
 
 // ===== 跳過行判斷 =====
@@ -663,7 +671,11 @@ function processFile(file) {
             fill.style.width = '80%';
 
             // 代碼轉換為衛生所名稱 (z20 → 佳里區衛生所)
-            allRecords.forEach(r => { r.office = resolveOffice(r.office); });
+            allRecords.forEach(r => {
+                r.office = resolveOffice(r.office);
+                r.sheet = cleanSheetName(r.sheet);
+                r.person = cleanPersonName(r.person);
+            });
 
             // 過濾無效衛生所名稱
             const validRecords = allRecords.filter(r => isValidOffice(r.office));
