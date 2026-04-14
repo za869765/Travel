@@ -60,7 +60,7 @@
     <header>
         <h1>差旅明細整理系統</h1>
         <p>上傳 XLS 旅費彙整表 → 選擇衛生所 → 查看明細與個人小計 → 下載 Excel</p>
-        <p style="opacity:0.6; font-size:12px; margin-top:4px;">v4.3 (2026-04-14)</p>
+        <p style="opacity:0.6; font-size:12px; margin-top:4px;">v4.4 (2026-04-14)</p>
     </header>
 
     <div class="card" id="uploadCard">
@@ -246,12 +246,22 @@ function splitPersons(personStr, totalAmount) {
 
 // ===== 清理分頁名稱（去除前導頁碼如 "7", "8.", "13."） =====
 function cleanSheetName(name) {
-    // 有點的：2.支援→支援, 13.11-12月→11-12月, 8.1月→1月
-    let s = name.replace(/^\d+\.\s*/, '');
-    if (s !== name) return s;
-    // 無點的：70126低碳→0126低碳（去掉第一個頁碼數字）
-    // 但保留日期格式如 7/20, 3/10（數字後面接/的不刪）
-    return name.replace(/^\d(?!\/)/, '');
+    let s = name;
+    // 去尾部頁碼：愛滋加班-7 → 愛滋加班
+    s = s.replace(/[-－]\d+$/, '');
+    // 有點的頁碼：2.支援→支援, 13.11-12月→11-12月, 8.1月→1月
+    const dotClean = s.replace(/^\d+\.\s*/, '');
+    if (dotClean !== s) return dotClean;
+    // 開頭是日期格式則保留不動
+    if (/^\d{1,2}\/\d{1,2}/.test(s)) return s;       // M/D, MM/DD: 3/21, 07/20
+    if (/^\d{4}[\u4e00-\u9fff.]/.test(s)) return s;   // MMDD: 0126低碳, 0226.0303
+    if (/^\d{3}[\u4e00-\u9fff]/.test(s)) return s;    // MDD: 720健身
+    // 頁碼+MMDD日期：30818高齡→0818高齡, 70126低碳→0126低碳
+    if (/^\d(\d{4}[\u4e00-\u9fff.])/.test(s)) return s.substring(1);
+    // 頁碼+MDD：不常見但以防萬一
+    if (/^\d(\d{3}[\u4e00-\u9fff])/.test(s)) return s.substring(1);
+    // 其他：去第一個頁碼數字
+    return s.replace(/^\d/, '');
 }
 
 // ===== 跳過行判斷 =====
