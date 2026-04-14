@@ -38,9 +38,11 @@
         .stat-card { background: linear-gradient(135deg, #f8fafc, #eef4fb); padding: 14px; border-radius: 10px; text-align: center; border: 1px solid #d5e3f0; }
         .stat-card .number { font-size: 24px; font-weight: 700; color: #1e3a5f; }
         .stat-card .label { font-size: 12px; color: #666; margin-top: 4px; }
-        table { width: 100%; border-collapse: collapse; font-size: 14px; margin-top: 8px; }
-        th { background: #4a90d9; color: white; padding: 10px 8px; text-align: left; position: sticky; top: 0; z-index: 1; }
-        td { padding: 8px; border-bottom: 1px solid #eee; }
+        table { width: 100%; border-collapse: collapse; font-size: 14px; margin-top: 8px; table-layout: fixed; }
+        th { background: #4a90d9; color: white; padding: 10px 8px; text-align: center; position: sticky; top: 0; z-index: 1; white-space: nowrap; }
+        td { padding: 8px; border-bottom: 1px solid #eee; text-align: center; }
+        td:first-child, th:first-child { text-align: left; }
+        .text-right { text-align: right !important; }
         tr:hover { background: #f0f7ff; }
         .total-row { background: #d9e2f3 !important; font-weight: 700; }
         .table-wrap { max-height: 450px; overflow-y: auto; border: 1px solid #e8edf2; border-radius: 8px; }
@@ -58,7 +60,7 @@
     <header>
         <h1>差旅明細整理系統</h1>
         <p>上傳 XLS 旅費彙整表 → 選擇衛生所 → 查看明細與個人小計 → 下載 Excel</p>
-        <p style="opacity:0.6; font-size:12px; margin-top:4px;">v3.5 (2026-04-14)</p>
+        <p style="opacity:0.6; font-size:12px; margin-top:4px;">v3.6 (2026-04-14)</p>
     </header>
 
     <div class="card" id="uploadCard">
@@ -772,16 +774,16 @@ function renderPersonTable(filterOffice) {
         });
         const tc = p.travelCount || 0;
         totalTravelCount += tc;
-        return `<tr>${filterOffice ? '' : `<td>${p.office}</td>`}<td>${p.person}</td>${cells}<td class="text-right">${rowTotal.toLocaleString()}</td><td class="text-right">${tc || '-'}</td></tr>`;
+        return `<tr>${filterOffice ? '' : `<td>${p.office}</td>`}<td>${p.person}</td><td class="text-right">${tc || '-'}</td>${cells}<td class="text-right">${rowTotal.toLocaleString()}</td></tr>`;
     }).join('');
 
     let grandTotal = Object.values(gt).reduce((s, v) => s + v, 0);
     let gtCells = feeTypes.map(t => `<td class="text-right">${gt[t].toLocaleString()}</td>`).join('');
 
     document.getElementById('personDetail').innerHTML = `
-        <table><tr>${officeCol}<th>姓名</th>${feeTypes.map(t => `<th>${t}</th>`).join('')}<th>總計</th><th>差旅單</th></tr>
+        <table><tr>${officeCol}<th>姓名</th><th>差旅單</th>${feeTypes.map(t => `<th>${t}</th>`).join('')}<th>總計</th></tr>
         ${prows}
-        <tr class="total-row">${filterOffice ? '' : '<td></td>'}<td>總計 (${data.length} 人)</td>${gtCells}<td class="text-right">${grandTotal.toLocaleString()}</td><td class="text-right">${totalTravelCount}</td></tr></table>`;
+        <tr class="total-row">${filterOffice ? '' : '<td></td>'}<td>總計 (${data.length} 人)</td><td class="text-right">${totalTravelCount}</td>${gtCells}<td class="text-right">${grandTotal.toLocaleString()}</td></tr></table>`;
 }
 
 // ===== 下載 Excel =====
@@ -805,10 +807,10 @@ function downloadExcel() {
 
     // === 區塊2: 個人小計 ===
     data.push(['個人小計']);
-    data.push(['姓名', ...feeTypes, '總計', '差旅單']);
+    data.push(['姓名', '差旅單', ...feeTypes, '總計']);
     personData.forEach(p => {
         const vals = feeTypes.map(t => p[t] || 0);
-        data.push([p.person, ...vals, vals.reduce((s, v) => s + v, 0), p.travelCount || 0]);
+        data.push([p.person, p.travelCount || 0, ...vals, vals.reduce((s, v) => s + v, 0)]);
     });
     data.push([]);
 
