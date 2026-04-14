@@ -60,7 +60,7 @@
     <header>
         <h1>差旅明細整理系統</h1>
         <p>上傳 XLS 旅費彙整表 → 選擇衛生所 → 查看明細與個人小計 → 下載 Excel</p>
-        <p style="opacity:0.6; font-size:12px; margin-top:4px;">v4.2 (2026-04-14)</p>
+        <p style="opacity:0.6; font-size:12px; margin-top:4px;">v4.3 (2026-04-14)</p>
     </header>
 
     <div class="card" id="uploadCard">
@@ -250,7 +250,8 @@ function cleanSheetName(name) {
     let s = name.replace(/^\d+\.\s*/, '');
     if (s !== name) return s;
     // 無點的：70126低碳→0126低碳（去掉第一個頁碼數字）
-    return name.replace(/^\d/, '');
+    // 但保留日期格式如 7/20, 3/10（數字後面接/的不刪）
+    return name.replace(/^\d(?!\/)/, '');
 }
 
 // ===== 跳過行判斷 =====
