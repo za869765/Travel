@@ -60,7 +60,7 @@
     <header>
         <h1>差旅明細整理系統</h1>
         <p>將會計室mail的 旅費彙整表.xls 檔案上傳 → 選擇衛生所 → 查看明細與個人小計 → 下載 Excel</p>
-        <p style="font-size:12px; margin-top:4px; text-align:right; font-weight:bold;">v5.1</p>
+        <p style="font-size:12px; margin-top:4px; text-align:right; font-weight:bold;">v5.2</p>
         <p style="font-size:12px; text-align:right; margin-top:6px; color:#ff4444; font-weight:600;">免責聲明：本工具僅供參考，請自行確認內容。</p>
     </header>
 
@@ -1043,17 +1043,29 @@ function downloadExcel() {
 
     const ws = XLSX.utils.aoa_to_sheet(data);
 
-    // A4 直式列印設定
+    // A4 直式列印設定（寬度約 80 字元內）
     ws['!cols'] = [
-        { wch: 18 }, // A: 分頁/姓名
-        { wch: 10 }, // B: 類型/差旅費
-        { wch: 10 }, // C: 姓名/加班費
-        { wch: 10 }, // D: 金額/誤餐費
-        { wch: 18 }, // E: 事由/醫護費用
-        { wch: 10 }  // F: 總計
+        { wch: 16 }, // A: 分頁/姓名
+        { wch: 8 },  // B: 類型/差旅單
+        { wch: 8 },  // C: 姓名/差旅費
+        { wch: 8 },  // D: 金額/加班費
+        { wch: 16 }, // E: 事由/其他費用
+        { wch: 8 }   // F: 總計
     ];
-    ws['!print'] = { orientation: 'portrait', paper: 9 }; // A4=9
-    ws['!margins'] = { left: 0.5, right: 0.5, top: 0.5, bottom: 0.5, header: 0.3, footer: 0.3 };
+
+    // 所有儲存格設定自動換行
+    const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
+    for (let R = range.s.r; R <= range.e.r; R++) {
+        for (let C = range.s.c; C <= range.e.c; C++) {
+            const addr = XLSX.utils.encode_cell({ r: R, c: C });
+            if (!ws[addr]) continue;
+            if (!ws[addr].s) ws[addr].s = {};
+            ws[addr].s.alignment = { wrapText: true, vertical: 'top' };
+        }
+    }
+
+    ws['!print'] = { orientation: 'portrait', paper: 9, fitToWidth: 1, fitToHeight: 0 }; // A4 縮放至1頁寬
+    ws['!margins'] = { left: 0.4, right: 0.4, top: 0.4, bottom: 0.4, header: 0.2, footer: 0.2 };
 
     XLSX.utils.book_append_sheet(wb, ws, (office || '整理總表').substring(0, 31));
 
