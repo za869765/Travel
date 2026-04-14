@@ -60,7 +60,7 @@
     <header>
         <h1>差旅明細整理系統</h1>
         <p>上傳 XLS 旅費彙整表 → 選擇衛生所 → 查看明細與個人小計 → 下載 Excel</p>
-        <p style="opacity:0.6; font-size:12px; margin-top:4px;">v3.6 (2026-04-14)</p>
+        <p style="opacity:0.6; font-size:12px; margin-top:4px;">v3.7 (2026-04-14)</p>
     </header>
 
     <div class="card" id="uploadCard">
@@ -173,6 +173,21 @@ function resetPage() {
     document.getElementById('progressArea').style.display = 'none';
     document.getElementById('resultArea').style.display = 'none';
     document.getElementById('uploadCard').style.display = 'block';
+}
+
+// ===== 從檔名提取標題 =====
+function extractFileTitle(filename) {
+    const name = filename.replace(/\.xlsx?$/i, '');
+    // 格式1: "79,054元115年衛生所第3次旅費彙整表 (1)" → "115年衛生所第3次旅費"
+    let m = name.match(/[\d,]+元(\d+年衛生所第\d+次[^\s(（]+)/);
+    if (m) return m[1].replace(/彙整表$/, '').replace(/員整表$/, '');
+    // 格式2: "衛生所代辦經費彙整表1140312" → 原樣
+    m = name.match(/(衛生所[^\s(（]+)/);
+    if (m) return m[1];
+    // 格式3: "114年衛生所第4次差旅費彙整表 (1)" → "114年衛生所第4次差旅費"
+    m = name.match(/(\d+年衛生所第\d+次[^\s(（]+)/);
+    if (m) return m[1].replace(/彙整表$/, '').replace(/員整表$/, '');
+    return name.replace(/\s*[\(（]\d+[\)）]\s*$/, '');
 }
 
 // ===== 姓名拆分 =====
@@ -681,7 +696,8 @@ function processFile(file) {
                 overtimeCount,
                 grandTotal,
                 personCount: personList.length,
-                fileName: file.name.replace(/\.xlsx?$/, ''),
+                fileName: file.name.replace(/\.xlsx?$/i, ''),
+                fileTitle: extractFileTitle(file.name),
                 wb  // 保留原始 workbook 供下載用
             };
 
@@ -799,7 +815,8 @@ function downloadExcel() {
     const data = [];
 
     // === 區塊1: 全部明細 ===
-    data.push([office ? `${office} 全部明細` : '全部出差明細']);
+    const title = resultData.fileTitle + (office ? ` ${office}` : '');
+    data.push([title]);
     data.push(['分頁', '類型', '姓名', '金額', '事由']);
     records.forEach(r => data.push([r.sheet, r.type, r.person, r.amount, r.reason]));
     data.push(['', '', '合計', records.reduce((s, r) => s + r.amount, 0), '']);
