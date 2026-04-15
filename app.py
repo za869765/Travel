@@ -459,8 +459,8 @@ def run_process(filepath, original_filename):
         summary_data, summary_headers = extract_summary(wb, file_label)
         if summary_data:
             all_summaries[file_label] = (summary_data, summary_headers)
-    except:
-        pass
+    except Exception as e:
+        log_fn(f"⚠️ 彙總表解析失敗: {e}")
 
     log_lines.append(f"\n📊 共解析 {len(all_records)} 筆明細（姓名已拆分）")
 
@@ -483,7 +483,7 @@ def run_process(filepath, original_filename):
         fee_type = rec["類型"]
         person_subtotals[key][fee_type] = person_subtotals[key].get(fee_type, 0) + rec["金額"]
 
-    named_persons = {k: v for k, v in person_subtotals.items() if k[1]}
+    named_persons = {k: v for k, v in person_subtotals.items() if k[1].strip()}
 
     log_lines.append(f"🏥 衛生所: {len(offices)} 個")
     log_lines.append(f"⏰ 加班費: {len(overtime_records)} 筆")

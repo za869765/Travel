@@ -121,12 +121,30 @@ def split_persons(person_str, total_amount):
     if no_amount and has_amount:
         used = sum(a for _, a in has_amount)
         remaining = total_amount - used
-        per_person = remaining / len(no_amount) if len(no_amount) > 0 else 0
-        results = has_amount + [(n, per_person) for n, _ in no_amount]
+        n = len(no_amount)
+        if n > 0:
+            # 前 n-1 人拿四捨五入值，最後一人補差額，確保總和精確
+            base = round(remaining / n)
+            split_list = []
+            for i, (nm, _) in enumerate(no_amount):
+                if i < n - 1:
+                    split_list.append((nm, base))
+                else:
+                    split_list.append((nm, remaining - base * (n - 1)))
+            results = has_amount + split_list
+        else:
+            results = has_amount
     elif not has_amount and len(results) > 1:
-        # 全部沒金額，平均分配
-        per_person = total_amount / len(results)
-        results = [(n, per_person) for n, _ in results]
+        # 全部沒金額，平均分配；前 n-1 人四捨五入，最後一人補差額
+        n = len(results)
+        base = round(total_amount / n)
+        new_results = []
+        for i, (nm, _) in enumerate(results):
+            if i < n - 1:
+                new_results.append((nm, base))
+            else:
+                new_results.append((nm, total_amount - base * (n - 1)))
+        results = new_results
 
     return results if results else [("", total_amount)]
 
@@ -921,8 +939,8 @@ def main():
             summary_data, summary_headers = extract_summary(wb, file_label)
             if summary_data:
                 all_summaries[file_label] = (summary_data, summary_headers)
-        except:
-            pass
+        except Exception as e:
+            print(f"[WARN] 彙總表解析失敗: {e}")
 
     print(f"\n{'=' * 60}")
     print(f"📊 全部共解析 {len(all_records)} 筆明細")
