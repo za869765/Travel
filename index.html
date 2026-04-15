@@ -71,7 +71,7 @@
     <header>
         <h1>差旅明細整理系統</h1>
         <p>將會計室mail的 旅費彙整表.xls 檔案上傳 → 選擇衛生所 → 查看明細與個人小計 → 下載 Excel</p>
-        <p style="font-size:12px; margin-top:4px; text-align:right; font-weight:bold;">v6.5.2</p>
+        <p style="font-size:12px; margin-top:4px; text-align:right; font-weight:bold;">v6.6</p>
         <p style="font-size:12px; text-align:right; margin-top:6px; color:#ff4444; font-weight:600;">免責聲明：本工具僅供參考，請自行確認內容。</p>
     </header>
 
@@ -1164,64 +1164,171 @@ function downloadExcel() {
     const personData = office ? resultData.personList.filter(p => p.office === office) : resultData.personList;
     const otRecords = records.filter(r => r.type === '加班費');
 
+    const MAX_COLS = 6;  // 個人小計 6 欄為最寬
     const wb = XLSX.utils.book_new();
     const data = [];
+    const idx = {};  // 記錄各區塊 row index
+
+    const padRow = (arr) => {
+        const r = arr.slice();
+        while (r.length < MAX_COLS) r.push('');
+        return r;
+    };
 
     // === 區塊1: 全部明細 ===
     const title = resultData.fileTitle + (office ? ` ${office}` : '');
-    data.push([title]);
-    data.push(['分頁', '類型', '姓名', '金額', '事由']);
-    records.forEach(r => data.push([r.sheet, r.type, r.person, r.amount, r.reason]));
-    data.push(['', '', '合計', records.reduce((s, r) => s + r.amount, 0), '']);
-    data.push([]);
+    idx.title = data.length;            data.push(padRow([title]));
+    idx.mainHeader = data.length;       data.push(padRow(['分頁', '類型', '姓名', '金額', '事由']));
+    idx.mainDataStart = data.length;
+    records.forEach(r => data.push(padRow([r.sheet, r.type, r.person, r.amount, r.reason])));
+    idx.mainDataEnd = data.length - 1;
+    idx.mainTotal = data.length;        data.push(padRow(['', '', '合計', records.reduce((s, r) => s + r.amount, 0), '']));
+    data.push(padRow([]));  // spacer
 
     // === 區塊2: 個人小計 ===
-    data.push(['個人小計']);
-    data.push(['姓名', '差旅單', ...feeTypes, '總計']);
+    idx.personTitle = data.length;      data.push(padRow(['個人小計']));
+    idx.personHeader = data.length;     data.push(padRow(['姓名', '差旅單', ...feeTypes, '總計']));
+    idx.personDataStart = data.length;
     personData.forEach(p => {
         const vals = feeTypes.map(t => p[t] || 0);
-        data.push([p.person, p.travelCount || 0, ...vals, vals.reduce((s, v) => s + v, 0)]);
+        data.push(padRow([p.person, p.travelCount || 0, ...vals, vals.reduce((s, v) => s + v, 0)]));
     });
-    data.push([]);
+    idx.personDataEnd = data.length - 1;
+    // 個人小計合計列
+    const grandVals = feeTypes.map(t => personData.reduce((s, p) => s + (p[t] || 0), 0));
+    const grandTravelCount = personData.reduce((s, p) => s + (p.travelCount || 0), 0);
+    idx.personTotal = data.length;      data.push(padRow(['總計', grandTravelCount, ...grandVals, grandVals.reduce((s, v) => s + v, 0)]));
+    data.push(padRow([]));
 
     // === 區塊3: 加班費彙整 ===
     if (otRecords.length > 0) {
-        data.push(['加班費彙整']);
-        data.push(['分頁', '姓名', '金額', '事由']);
-        otRecords.forEach(r => data.push([r.sheet, r.person, r.amount, r.reason]));
-        data.push(['', '合計', otRecords.reduce((s, r) => s + r.amount, 0), '']);
+        idx.otTitle = data.length;      data.push(padRow(['加班費彙整']));
+        idx.otHeader = data.length;     data.push(padRow(['分頁', '姓名', '金額', '事由']));
+        idx.otDataStart = data.length;
+        otRecords.forEach(r => data.push(padRow([r.sheet, r.person, r.amount, r.reason])));
+        idx.otDataEnd = data.length - 1;
+        idx.otTotal = data.length;      data.push(padRow(['', '合計', otRecords.reduce((s, r) => s + r.amount, 0), '']));
     }
 
-    data.push([]);
-    data.push([]);
-    data.push(['製表人：']);
+    data.push(padRow([]));
+    data.push(padRow([]));
+    idx.maker = data.length;            data.push(padRow(['製表人：']));
 
     const ws = XLSX.utils.aoa_to_sheet(data);
 
-    // A4 直式列印設定（寬度約 80 字元內）
+    // A4 直式列印：6 欄總寬約 76 字元
     ws['!cols'] = [
-        { wch: 16 }, // A: 分頁/姓名
-        { wch: 8 },  // B: 類型/差旅單
-        { wch: 8 },  // C: 姓名/差旅費
-        { wch: 8 },  // D: 金額/加班費
-        { wch: 16 }, // E: 事由/其他費用
-        { wch: 8 }   // F: 總計
+        { wch: 18 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 18 }, { wch: 10 }
     ];
 
-    // 所有儲存格設定自動換行
-    const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
-    for (let R = range.s.r; R <= range.e.r; R++) {
-        for (let C = range.s.c; C <= range.e.c; C++) {
-            const addr = XLSX.utils.encode_cell({ r: R, c: C });
-            if (!ws[addr]) continue;
-            if (!ws[addr].s) ws[addr].s = {};
-            ws[addr].s.alignment = { wrapText: true, vertical: 'top' };
+    // ===== 樣式定義（黑白） =====
+    const thin   = { style: 'thin',   color: { rgb: '000000' } };
+    const medium = { style: 'medium', color: { rgb: '000000' } };
+    const double = { style: 'double', color: { rgb: '000000' } };
+    const borderAll    = { top: thin, bottom: thin, left: thin, right: thin };
+    const borderHeader = { top: medium, bottom: double, left: thin, right: thin };
+    const borderTotal  = { top: double, bottom: medium, left: thin, right: thin };
+    const borderTitle  = { bottom: medium };
+
+    const getOrInit = (r, c) => {
+        const addr = XLSX.utils.encode_cell({ r, c });
+        if (!ws[addr]) ws[addr] = { t: 's', v: '' };
+        if (!ws[addr].s) ws[addr].s = {};
+        return ws[addr];
+    };
+    const styleRow = (r, cStart, cEnd, style) => {
+        for (let c = cStart; c <= cEnd; c++) {
+            const cell = getOrInit(r, c);
+            cell.s = { ...cell.s, ...style, alignment: { ...(cell.s.alignment || {}), ...(style.alignment || {}) } };
+        }
+    };
+
+    const alignCenter = { horizontal: 'center', vertical: 'center', wrapText: true };
+    const alignLeft   = { horizontal: 'left',   vertical: 'center', wrapText: true };
+    const alignRight  = { horizontal: 'right',  vertical: 'center', wrapText: true };
+    const alignNum    = { horizontal: 'right',  vertical: 'center', wrapText: true };
+
+    // 標題
+    styleRow(idx.title, 0, MAX_COLS - 1, {
+        font: { bold: true, sz: 16 },
+        alignment: alignCenter,
+        border: borderTitle
+    });
+    if (!ws['!rows']) ws['!rows'] = [];
+    ws['!rows'][idx.title] = { hpt: 32 };
+
+    // ---- 區塊1: 全部明細 ----
+    styleRow(idx.mainHeader, 0, 4, { font: { bold: true }, alignment: alignCenter, border: borderHeader });
+    for (let r = idx.mainDataStart; r <= idx.mainDataEnd; r++) {
+        styleRow(r, 0, 4, { alignment: alignLeft, border: borderAll });
+        // 金額欄（col D / index 3）右對齊 + 千分位
+        const amt = getOrInit(r, 3);
+        amt.s.alignment = { ...amt.s.alignment, horizontal: 'right' };
+        amt.z = '#,##0';
+    }
+    styleRow(idx.mainTotal, 0, 4, { font: { bold: true }, alignment: alignRight, border: borderTotal });
+    const mainTotalAmt = getOrInit(idx.mainTotal, 3);
+    mainTotalAmt.z = '#,##0';
+
+    // ---- 區塊2: 個人小計 ----
+    styleRow(idx.personTitle, 0, MAX_COLS - 1, {
+        font: { bold: true, sz: 13 },
+        alignment: alignLeft,
+        border: { bottom: medium }
+    });
+    styleRow(idx.personHeader, 0, MAX_COLS - 1, { font: { bold: true }, alignment: alignCenter, border: borderHeader });
+    for (let r = idx.personDataStart; r <= idx.personDataEnd; r++) {
+        styleRow(r, 0, MAX_COLS - 1, { alignment: alignCenter, border: borderAll });
+        // 數字欄（B~F / 1~5）右對齊 + 千分位
+        for (let c = 1; c < MAX_COLS; c++) {
+            const cell = getOrInit(r, c);
+            cell.s.alignment = { ...cell.s.alignment, horizontal: 'right' };
+            if (c >= 2) cell.z = '#,##0';
         }
     }
+    styleRow(idx.personTotal, 0, MAX_COLS - 1, { font: { bold: true }, alignment: alignCenter, border: borderTotal });
+    for (let c = 1; c < MAX_COLS; c++) {
+        const cell = getOrInit(idx.personTotal, c);
+        cell.s.alignment = { ...cell.s.alignment, horizontal: 'right' };
+        if (c >= 2) cell.z = '#,##0';
+    }
 
-    ws['!print'] = { orientation: 'portrait', paper: 9, fitToWidth: 1, fitToHeight: 0 }; // A4 縮放至1頁寬
+    // ---- 區塊3: 加班費彙整 ----
+    if (idx.otTitle !== undefined) {
+        styleRow(idx.otTitle, 0, MAX_COLS - 1, {
+            font: { bold: true, sz: 13 },
+            alignment: alignLeft,
+            border: { bottom: medium }
+        });
+        styleRow(idx.otHeader, 0, 3, { font: { bold: true }, alignment: alignCenter, border: borderHeader });
+        for (let r = idx.otDataStart; r <= idx.otDataEnd; r++) {
+            styleRow(r, 0, 3, { alignment: alignLeft, border: borderAll });
+            const amt = getOrInit(r, 2);
+            amt.s.alignment = { ...amt.s.alignment, horizontal: 'right' };
+            amt.z = '#,##0';
+        }
+        styleRow(idx.otTotal, 0, 3, { font: { bold: true }, alignment: alignRight, border: borderTotal });
+        const otTotAmt = getOrInit(idx.otTotal, 2);
+        otTotAmt.z = '#,##0';
+    }
+
+    // 製表人
+    getOrInit(idx.maker, 0).s = { font: { italic: true, sz: 11 } };
+
+    // ===== 合併儲存格 =====
+    const merges = [
+        { s: { r: idx.title, c: 0 },       e: { r: idx.title, c: MAX_COLS - 1 } },
+        { s: { r: idx.personTitle, c: 0 }, e: { r: idx.personTitle, c: MAX_COLS - 1 } },
+        { s: { r: idx.maker, c: 0 },       e: { r: idx.maker, c: MAX_COLS - 1 } },
+    ];
+    if (idx.otTitle !== undefined) {
+        merges.push({ s: { r: idx.otTitle, c: 0 }, e: { r: idx.otTitle, c: MAX_COLS - 1 } });
+    }
+    ws['!merges'] = merges;
+
+    // ===== 列印設定 =====
+    ws['!print'] = { orientation: 'portrait', paper: 9, fitToWidth: 1, fitToHeight: 0 };
     ws['!margins'] = { left: 0.4, right: 0.4, top: 0.4, bottom: 0.4, header: 0.2, footer: 0.3 };
-    // 頁尾顯示「第X頁，共Y頁」
     ws['!header'] = { odd: '' };
     ws['!footer'] = { odd: '&C第 &P 頁，共 &N 頁' };
 
