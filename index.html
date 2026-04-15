@@ -71,7 +71,7 @@
     <header>
         <h1>差旅明細整理系統</h1>
         <p>將會計室mail的 旅費彙整表.xls 檔案上傳 → 選擇衛生所 → 查看明細與個人小計 → 下載 Excel</p>
-        <p style="font-size:12px; margin-top:4px; text-align:right; font-weight:bold;">v6.6.4</p>
+        <p style="font-size:12px; margin-top:4px; text-align:right; font-weight:bold;">v6.6.5</p>
         <p style="font-size:12px; text-align:right; margin-top:6px; color:#ff4444; font-weight:600;">免責聲明：本工具僅供參考，請自行確認內容。</p>
     </header>
 
@@ -1152,11 +1152,25 @@ function showResult() {
     filterByOffice();
 }
 
+// v6.6.5 把明細依 personList 順序排序（同一人的列聚在一起，順序與個人小計一致）
+function sortRecordsByPersonOrder(records, personList) {
+    const order = new Map();
+    personList.forEach((p, i) => order.set(p.office + '|' + (p.person || ''), i));
+    return records.slice().sort((a, b) => {
+        const ka = a.office + '|' + (a.person || '');
+        const kb = b.office + '|' + (b.person || '');
+        const oa = order.has(ka) ? order.get(ka) : 99999;
+        const ob = order.has(kb) ? order.get(kb) : 99999;
+        return oa - ob;
+    });
+}
+
 function filterByOffice() {
     if (!resultData) return;
     const office = document.getElementById('officeSelect').value;
     localStorage.setItem('lastOffice', office);
-    const records = office ? resultData.allRecords.filter(r => r.office === office) : resultData.allRecords;
+    const rawRecords = office ? resultData.allRecords.filter(r => r.office === office) : resultData.allRecords;
+    const records = sortRecordsByPersonOrder(rawRecords, resultData.personList);
     const total = records.reduce((s, r) => s + r.amount, 0);
 
     // v6.6.4 三方金額把關（原始 vs 明細 vs 個人小計）
@@ -1236,9 +1250,11 @@ function renderPersonTable(filterOffice) {
 function downloadExcel() {
     if (!resultData) return;
     const office = document.getElementById('officeSelect').value;
-    const records = office ? resultData.allRecords.filter(r => r.office === office) : resultData.allRecords;
+    const rawRecords = office ? resultData.allRecords.filter(r => r.office === office) : resultData.allRecords;
     const feeTypes = ['差旅費', '加班費', '其他費用'];
     const personData = office ? resultData.personList.filter(p => p.office === office) : resultData.personList;
+    // v6.6.5 明細依 personList 順序排序（同一人列聚合，順序與個人小計一致）
+    const records = sortRecordsByPersonOrder(rawRecords, resultData.personList);
     const otRecords = records.filter(r => r.type === '加班費');
 
     const MAX_COLS = 6;  // 個人小計 6 欄為最寬
