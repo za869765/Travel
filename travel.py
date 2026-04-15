@@ -124,26 +124,27 @@ def split_persons(person_str, total_amount):
         n = len(no_amount)
         if n > 0:
             # 前 n-1 人拿四捨五入值，最後一人補差額，確保總和精確
-            base = round(remaining / n)
+            # 金額以整數元為單位，最終強制轉 int 消除浮點尾數（避免前端 0.001 容差把關失敗）
+            base = int(round(remaining / n))
             split_list = []
             for i, (nm, _) in enumerate(no_amount):
                 if i < n - 1:
                     split_list.append((nm, base))
                 else:
-                    split_list.append((nm, remaining - base * (n - 1)))
+                    split_list.append((nm, int(round(remaining - base * (n - 1)))))
             results = has_amount + split_list
         else:
             results = has_amount
     elif not has_amount and len(results) > 1:
         # 全部沒金額，平均分配；前 n-1 人四捨五入，最後一人補差額
         n = len(results)
-        base = round(total_amount / n)
+        base = int(round(total_amount / n))
         new_results = []
         for i, (nm, _) in enumerate(results):
             if i < n - 1:
                 new_results.append((nm, base))
             else:
-                new_results.append((nm, total_amount - base * (n - 1)))
+                new_results.append((nm, int(round(total_amount - base * (n - 1)))))
         results = new_results
 
     return results if results else [("", total_amount)]
