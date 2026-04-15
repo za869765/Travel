@@ -71,7 +71,7 @@
     <header>
         <h1>差旅明細整理系統</h1>
         <p>將會計室mail的 旅費彙整表.xls 檔案上傳 → 選擇衛生所 → 查看明細與個人小計 → 下載 Excel</p>
-        <p style="font-size:12px; margin-top:4px; text-align:right; font-weight:bold;">v6.6.2</p>
+        <p style="font-size:12px; margin-top:4px; text-align:right; font-weight:bold;">v6.6.3</p>
         <p style="font-size:12px; text-align:right; margin-top:6px; color:#ff4444; font-weight:600;">免責聲明：本工具僅供參考，請自行確認內容。</p>
     </header>
 
@@ -259,33 +259,55 @@ function cleanPersonName(s) {
 
 function splitPersons(personStr, totalAmount) {
     if (!personStr || !personStr.trim()) return [{ name: '', amount: totalAmount }];
-    // v6.6 修正：不再呼叫 cleanPersonName（它只抓第一個中文區塊，會把 "鍾宜珍$157+侯晏筑$156" 截成 "鍾宜珍"
-    // 導致 + 之後的人被丟掉、金額全併到第一人）。每筆拆出的 name 會在 line 988 再經 cleanPersonName 清理。
+    // v6.6.3 智慧辨識：支援多種人名+金額格式，嚴格遵守「人名不遺漏、找不到則留空給使用者補」
     let text = personStr.trim();
 
-    // 用 + 分割
-    const parts = text.split(/[+＋]/);
+    // (1) 先正規化金額：把 $ 後面的千分位 , 與 "元" 字拿掉，避免 , 被當人名分隔符、元 吃掉匹配
+    text = text.replace(/\$\s*(\d{1,3}(?:,\d{3})+(?:\.\d+)?)\s*元?/g, (_, n) => '$' + n.replace(/,/g, ''));
+    text = text.replace(/\$\s*(\d+(?:\.\d+)?)\s*元/g, (_, n) => '$' + n);
+
+    // (2) 多種分隔符拆分：+ ＋ 、 , ， / ・ & 及 和 兼（中文「及/和/兼」前後允許空白）
+    const parts = text.split(/[+＋、,，/・&]|\s*(?:及|和|兼)\s*/);
     let results = [];
 
     for (let part of parts) {
         part = part.trim();
         if (!part) continue;
-        // 用頓號分割
-        const subs = part.split(/[、,，]/);
-        for (let sp of subs) {
-            sp = sp.trim();
-            if (!sp) continue;
-            // 姓名$金額*N人
-            let m = sp.match(/^(.+?)\$(\d+(?:\.\d+)?)\*(\d+)人?$/);
-            if (m) { results.push({ name: m[1].trim(), amount: parseFloat(m[2]) }); continue; }
-            // 姓名$金額
-            m = sp.match(/^(.+?)\$(\d+(?:\.\d+)?)$/);
-            if (m) { results.push({ name: m[1].trim(), amount: parseFloat(m[2]) }); continue; }
-            // 純姓名
-            results.push({ name: sp, amount: 0 });
+
+        let m;
+
+        // (A) 姓名$金額*N人 — 展開 N 筆（第 1 筆帶姓名，其餘留空給使用者補），避免另 N-1 人金額消失
+        m = part.match(/^(.+?)\s*\$\s*(\d+(?:\.\d+)?)\s*\*\s*(\d+)\s*人?$/);
+        if (m) {
+            const perAmt = parseFloat(m[2]);
+            const n = parseInt(m[3], 10) || 1;
+            results.push({ name: m[1].trim(), amount: perAmt });
+            for (let i = 1; i < n; i++) results.push({ name: '', amount: perAmt });
+            if (typeof addLog === 'function') addLog(`⚠️ "${part}" 展開為 ${n} 筆（${n-1} 筆姓名留空待補）`);
+            continue;
         }
+
+        // (B) 姓名$金額 / 姓名 $ 金額
+        m = part.match(/^(.+?)\s*\$\s*(\d+(?:\.\d+)?)$/);
+        if (m) { results.push({ name: m[1].trim(), amount: parseFloat(m[2]) }); continue; }
+
+        // (C) 智慧：中文姓名後直接接數字（無 $）— "鍾宜珍157" / "鍾宜珍 157"
+        m = part.match(/^([\u4e00-\u9fff]{2,4})\s*(\d+(?:\.\d+)?)$/);
+        if (m) { results.push({ name: m[1].trim(), amount: parseFloat(m[2]) }); continue; }
+
+        // (D) 智慧：數字開頭 + 姓名 — "157鍾宜珍"
+        m = part.match(/^(\d+(?:\.\d+)?)\s*([\u4e00-\u9fff]{2,4})$/);
+        if (m) { results.push({ name: m[2].trim(), amount: parseFloat(m[1]) }); continue; }
+
+        // (E) 純數字（有金額但無姓名）— 姓名留空給使用者補
+        m = part.match(/^\$?\s*(\d+(?:\.\d+)?)$/);
+        if (m) { results.push({ name: '', amount: parseFloat(m[1]) }); continue; }
+
+        // (F) 其他（純姓名或含噪音前後綴）— line 988 的 cleanPersonName 會再次清理
+        results.push({ name: part, amount: 0 });
     }
 
+    // 只有單一筆且無金額 → 把整個 totalAmount 歸給這一人
     if (results.length === 1 && results[0].amount === 0)
         return [{ name: results[0].name, amount: totalAmount }];
 
