@@ -71,7 +71,7 @@
     <header>
         <h1>差旅明細整理系統</h1>
         <p>將會計室mail的 旅費彙整表.xls 檔案上傳 → 選擇衛生所 → 查看明細與個人小計 → 下載 Excel</p>
-        <p style="font-size:12px; margin-top:4px; text-align:right; font-weight:bold;">v6.6.3</p>
+        <p style="font-size:12px; margin-top:4px; text-align:right; font-weight:bold;">v6.6.4</p>
         <p style="font-size:12px; text-align:right; margin-top:6px; color:#ff4444; font-weight:600;">免責聲明：本工具僅供參考，請自行確認內容。</p>
     </header>
 
@@ -326,6 +326,22 @@ function splitPersons(personStr, totalAmount) {
     return results.length > 0 ? results : [{ name: '', amount: totalAmount }];
 }
 
+// ===== splitPersons + _srcAmount 標記助手 =====
+// v6.6.4 三方金額把關（原始=明細=個人小計）：第一筆標記 _srcAmount = 原始金額，
+// 其餘 0；並修正任何浮點漂移，保證 sum(split.amount) === amount。
+function pushSplitRecords(records, base, person, amount) {
+    const splits = splitPersons(person, amount);
+    if (splits.length === 0) { records.push({ ...base, person: '', amount, _srcAmount: amount }); return; }
+    const sum = splits.reduce((s, x) => s + x.amount, 0);
+    if (Math.abs(sum - amount) > 0.001) {
+        // 調整最後一筆以嚴格保留原始總額（避免浮點/除不盡產生漂移）
+        splits[splits.length - 1].amount += (amount - sum);
+    }
+    splits.forEach((sp, i) => {
+        records.push({ ...base, person: sp.name, amount: sp.amount, _srcAmount: i === 0 ? amount : 0 });
+    });
+}
+
 // ===== 清理分頁名稱（去除前導頁碼如 "7", "8.", "13."） =====
 function cleanSheetName(name) {
     let s = name;
@@ -531,9 +547,7 @@ function extractOvertimeDetail(sheet, sheetName, fileLabel) {
         if (amount === 0) amount = safeFloat(row[4]);
         const note = String(row[noteCol] || '').trim();
         if (amount > 0 && currentOffice) {
-            for (const sp of splitPersons(person, amount)) {
-                records.push({ office: currentOffice, person: sp.name, amount: sp.amount, sheet: sheetName, type: '加班費', reason: note || sheetName });
-            }
+            pushSplitRecords(records, { office: currentOffice, sheet: sheetName, type: '加班費', reason: note || sheetName }, person, amount);
         }
     }
     return records;
@@ -575,11 +589,9 @@ function extractOvertimeSummary(sheet, sheetName, fileLabel) {
         const person = personCol >= 0 ? String(row[personCol] || '').trim() : '';
         if (amount > 0 && office && isValidOffice(office)) {
             if (person) {
-                for (const sp of splitPersons(person, amount)) {
-                    records.push({ office, person: sp.name, amount: sp.amount, sheet: sheetName, type: feeType, reason: purpose });
-                }
+                pushSplitRecords(records, { office, sheet: sheetName, type: feeType, reason: purpose }, person, amount);
             } else {
-                records.push({ office, person: '', amount, sheet: sheetName, type: feeType, reason: purpose });
+                records.push({ office, person: '', amount, sheet: sheetName, type: feeType, reason: purpose, _srcAmount: amount });
             }
         }
     }
@@ -613,9 +625,7 @@ function extractTravelDetail(sheet, sheetName, fileLabel) {
         if (amount === 0) amount = safeFloat(row[4]);
         const note = String(row[noteCol] || '').trim();
         if (amount > 0 && currentOffice) {
-            for (const sp of splitPersons(person, amount)) {
-                records.push({ office: currentOffice, person: sp.name, amount: sp.amount, sheet: sheetName, type: '差旅費', reason: note || sheetName });
-            }
+            pushSplitRecords(records, { office: currentOffice, sheet: sheetName, type: '差旅費', reason: note || sheetName }, person, amount);
         }
     }
     return records;
@@ -638,9 +648,7 @@ function extractTravelTraffic(sheet, sheetName, fileLabel) {
         const note = String(row[7] || '').trim();
         if (amount > 0 && person) {
             const office = district && !district.includes('衛生所') ? district + '衛生所' : district;
-            for (const sp of splitPersons(person, amount)) {
-                records.push({ office, person: sp.name, amount: sp.amount, sheet: sheetName, type: '差旅費', reason: note || sheetName });
-            }
+            pushSplitRecords(records, { office, sheet: sheetName, type: '差旅費', reason: note || sheetName }, person, amount);
         }
     }
     return records;
@@ -680,9 +688,7 @@ function extractTravelList(sheet, sheetName, fileLabel) {
                 const m = note.match(/\d+\/\d+\s*(.+)/);
                 person = m ? m[1].trim() : note;
             }
-            for (const sp of splitPersons(person, amount)) {
-                records.push({ office, person: sp.name, amount: sp.amount, sheet: sheetName, type: '差旅費', reason: sheetName });
-            }
+            pushSplitRecords(records, { office, sheet: sheetName, type: '差旅費', reason: sheetName }, person, amount);
         }
     }
     return records;
@@ -722,7 +728,7 @@ function extractVoucherDetail(sheet, sheetName, fileLabel) {
         // 只取小計欄有值的行（每人小計）
         const amount = safeFloat(row[subtotalCol]);
         if (amount > 0) {
-            records.push({ office: '(傳票明細)', person, amount, sheet: sheetName, type: '差旅費', reason: purpose });
+            records.push({ office: '(傳票明細)', person, amount, sheet: sheetName, type: '差旅費', reason: purpose, _srcAmount: amount });
         }
     }
     return records;
@@ -787,7 +793,8 @@ function extractSelfOutput(sheet, sheetName) {
             amount: amount,
             sheet: String(row[colSheet] || '').trim(),
             type: type,
-            reason: String(row[colReason] || '').trim()
+            reason: String(row[colReason] || '').trim(),
+            _srcAmount: amount
         });
     }
     return records;
@@ -866,7 +873,7 @@ function extractExpenseReportSheet(sheet, sheetName) {
                 if (person === 'X' || amountRaw === 'X') continue;
                 if (!person || amount <= 0) continue;
 
-                records.push({ office, person, amount, sheet: purpose || sheetName, type: feeType, reason: note || purpose });
+                records.push({ office, person, amount, sheet: purpose || sheetName, type: feeType, reason: note || purpose, _srcAmount: amount });
             }
             if (records.length > 0) return records;
         }
@@ -891,7 +898,7 @@ function extractExpenseReportSheet(sheet, sheetName) {
                 const amount = safeFloat(drow[sAmountCol]);
                 if (!office || amount <= 0) continue;
                 if (!office.includes('衛生所') && !office.includes('區')) continue;
-                records.push({ office, person, amount, sheet: purpose || sheetName, type: feeType, reason: purpose });
+                records.push({ office, person, amount, sheet: purpose || sheetName, type: feeType, reason: purpose, _srcAmount: amount });
             }
             if (records.length > 0) return records;
         }
@@ -919,7 +926,7 @@ function extractExpenseReportSheet(sheet, sheetName) {
         const amount = safeFloat(row[amountCol]);
         if (!zCode || !/^z\d{2}$/i.test(zCode)) continue;
         if (amount <= 0) continue;
-        records.push({ office, person: '', amount, sheet: purpose || sheetName, type: feeType, reason: purpose });
+        records.push({ office, person: '', amount, sheet: purpose || sheetName, type: feeType, reason: purpose, _srcAmount: amount });
     }
 
     return records;
@@ -1037,6 +1044,35 @@ function processFile(file) {
             const overtimeCount = validRecords.filter(r => r.type === '加班費').length;
             const grandTotal = validRecords.reduce((s, r) => s + r.amount, 0);
 
+            // v6.6.4 三方金額把關：原始 vs 明細 vs 個人小計（每個衛生所 & 全部）
+            const sourceByOffice = {}, detailByOffice = {}, personByOffice = {};
+            validRecords.forEach(r => {
+                if (r._srcAmount) sourceByOffice[r.office] = (sourceByOffice[r.office] || 0) + r._srcAmount;
+                detailByOffice[r.office] = (detailByOffice[r.office] || 0) + r.amount;
+            });
+            personList.forEach(p => {
+                const sum = (p['差旅費'] || 0) + (p['加班費'] || 0) + (p['其他費用'] || 0);
+                personByOffice[p.office] = (personByOffice[p.office] || 0) + sum;
+            });
+            const mismatches = [];
+            const allOffices = new Set([...Object.keys(sourceByOffice), ...Object.keys(detailByOffice), ...Object.keys(personByOffice)]);
+            allOffices.forEach(o => {
+                const s = sourceByOffice[o] || 0;
+                const d = detailByOffice[o] || 0;
+                const p = personByOffice[o] || 0;
+                if (Math.abs(s - d) > 0.01 || Math.abs(d - p) > 0.01 || Math.abs(s - p) > 0.01) {
+                    mismatches.push({ office: o, source: s, detail: d, person: p });
+                }
+            });
+            const grandSource = Object.values(sourceByOffice).reduce((s, v) => s + v, 0);
+            const grandPerson = Object.values(personByOffice).reduce((s, v) => s + v, 0);
+            if (mismatches.length > 0) {
+                addLog('\n⚠️ 金額自檢發現不一致：');
+                mismatches.forEach(m => addLog(`  ${m.office}: 原始=${m.source.toLocaleString()} 明細=${m.detail.toLocaleString()} 個人=${m.person.toLocaleString()}`));
+            } else {
+                addLog(`\n✅ 金額自檢通過：原始 ${grandSource.toLocaleString()} = 明細 ${grandTotal.toLocaleString()} = 個人小計 ${grandPerson.toLocaleString()}`);
+            }
+
             if (validRecords.length === 0) {
                 addLog('\n⚠️ 未偵測到有效資料！');
                 fill.style.width = '100%';
@@ -1061,6 +1097,11 @@ function processFile(file) {
                 grandTotal,
                 unknownCount,
                 personCount: personList.length,
+                sourceByOffice,
+                detailByOffice,
+                personByOffice,
+                grandSource,
+                grandPerson,
                 fileName: file.name.replace(/\.(xlsx?|csv)$/i, '').replace(/^[\d,]+元/, ''),
                 fileTitle: extractFileTitle(file.name),
                 wb  // 保留原始 workbook 供下載用
@@ -1118,14 +1159,26 @@ function filterByOffice() {
     const records = office ? resultData.allRecords.filter(r => r.office === office) : resultData.allRecords;
     const total = records.reduce((s, r) => s + r.amount, 0);
 
+    // v6.6.4 三方金額把關（原始 vs 明細 vs 個人小計）
+    const sourceAmt = office
+        ? (resultData.sourceByOffice[office] || 0)
+        : resultData.grandSource;
+    const personAmt = office
+        ? (resultData.personByOffice[office] || 0)
+        : resultData.grandPerson;
+    const detailAmt = total;
+    const threeMatch = Math.abs(sourceAmt - detailAmt) < 0.01 &&
+                       Math.abs(detailAmt - personAmt) < 0.01 &&
+                       Math.abs(sourceAmt - personAmt) < 0.01;
+    const checkBadge = threeMatch
+        ? `<span style="color:#27ae60;font-weight:bold;">✅ 原始=明細=個人小計 均為 ${detailAmt.toLocaleString()} 元</span>`
+        : `<span style="color:#e74c3c;font-weight:bold;">⚠️ 三方金額不一致 → 原始 ${sourceAmt.toLocaleString()} / 明細 ${detailAmt.toLocaleString()} / 個人小計 ${personAmt.toLocaleString()}</span>`;
+
     // 資訊列
-    if (office) {
-        document.getElementById('selectedInfo').style.display = 'block';
-        document.getElementById('selectedInfo').innerHTML =
-            `<strong>${office}</strong>　共 <strong>${records.length}</strong> 筆，合計 <strong>${total.toLocaleString()}</strong> 元`;
-    } else {
-        document.getElementById('selectedInfo').style.display = 'none';
-    }
+    document.getElementById('selectedInfo').style.display = 'block';
+    document.getElementById('selectedInfo').innerHTML = office
+        ? `<strong>${office}</strong>　共 <strong>${records.length}</strong> 筆，合計 <strong>${total.toLocaleString()}</strong> 元<br>${checkBadge}`
+        : `全部衛生所　共 <strong>${records.length}</strong> 筆<br>${checkBadge}`;
 
     // 明細表
     document.getElementById('detailCard').style.display = 'block';
