@@ -71,7 +71,7 @@
     <header>
         <h1>差旅明細整理系統</h1>
         <p>將會計室mail的 旅費彙整表.xls 檔案上傳 → 選擇衛生所 → 查看明細與個人小計 → 下載 Excel</p>
-        <p style="font-size:12px; margin-top:4px; text-align:right; font-weight:bold;">v6.6.1</p>
+        <p style="font-size:12px; margin-top:4px; text-align:right; font-weight:bold;">v6.6.2</p>
         <p style="font-size:12px; text-align:right; margin-top:6px; color:#ff4444; font-weight:600;">免責聲明：本工具僅供參考，請自行確認內容。</p>
     </header>
 
@@ -259,7 +259,9 @@ function cleanPersonName(s) {
 
 function splitPersons(personStr, totalAmount) {
     if (!personStr || !personStr.trim()) return [{ name: '', amount: totalAmount }];
-    let text = cleanPersonName(personStr);
+    // v6.6 修正：不再呼叫 cleanPersonName（它只抓第一個中文區塊，會把 "鍾宜珍$157+侯晏筑$156" 截成 "鍾宜珍"
+    // 導致 + 之後的人被丟掉、金額全併到第一人）。每筆拆出的 name 會在 line 988 再經 cleanPersonName 清理。
+    let text = personStr.trim();
 
     // 用 + 分割
     const parts = text.split(/[+＋]/);
