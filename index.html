@@ -71,7 +71,7 @@
     <header>
         <h1>差旅明細整理系統</h1>
         <p>將會計室mail的 旅費彙整表.xls 檔案上傳 → 選擇衛生所 → 查看明細與個人小計 → 下載 Excel</p>
-        <p style="font-size:12px; margin-top:4px; text-align:right; font-weight:bold;">v6.6</p>
+        <p style="font-size:12px; margin-top:4px; text-align:right; font-weight:bold;">v6.6.1</p>
         <p style="font-size:12px; text-align:right; margin-top:6px; color:#ff4444; font-weight:600;">免責聲明：本工具僅供參考，請自行確認內容。</p>
     </header>
 
@@ -1257,16 +1257,16 @@ function downloadExcel() {
     if (!ws['!rows']) ws['!rows'] = [];
     ws['!rows'][idx.title] = { hpt: 32 };
 
-    // ---- 區塊1: 全部明細 ----
-    styleRow(idx.mainHeader, 0, 4, { font: { bold: true }, alignment: alignCenter, border: borderHeader });
+    // ---- 區塊1: 全部明細（6 欄，事由合併 E:F）----
+    styleRow(idx.mainHeader, 0, 5, { font: { bold: true }, alignment: alignCenter, border: borderHeader });
     for (let r = idx.mainDataStart; r <= idx.mainDataEnd; r++) {
-        styleRow(r, 0, 4, { alignment: alignLeft, border: borderAll });
+        styleRow(r, 0, 5, { alignment: alignLeft, border: borderAll });
         // 金額欄（col D / index 3）右對齊 + 千分位
         const amt = getOrInit(r, 3);
         amt.s.alignment = { ...amt.s.alignment, horizontal: 'right' };
         amt.z = '#,##0';
     }
-    styleRow(idx.mainTotal, 0, 4, { font: { bold: true }, alignment: alignRight, border: borderTotal });
+    styleRow(idx.mainTotal, 0, 5, { font: { bold: true }, alignment: alignRight, border: borderTotal });
     const mainTotalAmt = getOrInit(idx.mainTotal, 3);
     mainTotalAmt.z = '#,##0';
 
@@ -1293,27 +1293,27 @@ function downloadExcel() {
         if (c >= 2) cell.z = '#,##0';
     }
 
-    // ---- 區塊3: 加班費彙整 ----
+    // ---- 區塊3: 加班費彙整（6 欄，事由合併 D:F）----
     if (idx.otTitle !== undefined) {
         styleRow(idx.otTitle, 0, MAX_COLS - 1, {
             font: { bold: true, sz: 13 },
             alignment: alignLeft,
             border: { bottom: medium }
         });
-        styleRow(idx.otHeader, 0, 3, { font: { bold: true }, alignment: alignCenter, border: borderHeader });
+        styleRow(idx.otHeader, 0, 5, { font: { bold: true }, alignment: alignCenter, border: borderHeader });
         for (let r = idx.otDataStart; r <= idx.otDataEnd; r++) {
-            styleRow(r, 0, 3, { alignment: alignLeft, border: borderAll });
+            styleRow(r, 0, 5, { alignment: alignLeft, border: borderAll });
             const amt = getOrInit(r, 2);
             amt.s.alignment = { ...amt.s.alignment, horizontal: 'right' };
             amt.z = '#,##0';
         }
-        styleRow(idx.otTotal, 0, 3, { font: { bold: true }, alignment: alignRight, border: borderTotal });
+        styleRow(idx.otTotal, 0, 5, { font: { bold: true }, alignment: alignRight, border: borderTotal });
         const otTotAmt = getOrInit(idx.otTotal, 2);
         otTotAmt.z = '#,##0';
     }
 
     // 製表人
-    getOrInit(idx.maker, 0).s = { font: { italic: true, sz: 11 } };
+    getOrInit(idx.maker, 0).s = { font: { sz: 11 } };
 
     // ===== 合併儲存格 =====
     const merges = [
@@ -1321,8 +1321,20 @@ function downloadExcel() {
         { s: { r: idx.personTitle, c: 0 }, e: { r: idx.personTitle, c: MAX_COLS - 1 } },
         { s: { r: idx.maker, c: 0 },       e: { r: idx.maker, c: MAX_COLS - 1 } },
     ];
+    // 全部明細：事由欄合併 E:F（header/data/total 各列）
+    merges.push({ s: { r: idx.mainHeader, c: 4 }, e: { r: idx.mainHeader, c: 5 } });
+    for (let r = idx.mainDataStart; r <= idx.mainDataEnd; r++) {
+        merges.push({ s: { r, c: 4 }, e: { r, c: 5 } });
+    }
+    merges.push({ s: { r: idx.mainTotal, c: 4 }, e: { r: idx.mainTotal, c: 5 } });
     if (idx.otTitle !== undefined) {
         merges.push({ s: { r: idx.otTitle, c: 0 }, e: { r: idx.otTitle, c: MAX_COLS - 1 } });
+        // 加班費彙整：事由欄合併 D:F
+        merges.push({ s: { r: idx.otHeader, c: 3 }, e: { r: idx.otHeader, c: 5 } });
+        for (let r = idx.otDataStart; r <= idx.otDataEnd; r++) {
+            merges.push({ s: { r, c: 3 }, e: { r, c: 5 } });
+        }
+        merges.push({ s: { r: idx.otTotal, c: 3 }, e: { r: idx.otTotal, c: 5 } });
     }
     ws['!merges'] = merges;
 
