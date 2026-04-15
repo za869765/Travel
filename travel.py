@@ -602,7 +602,7 @@ def style_header(ws, row, cols):
         cell = ws.cell(row=row, column=c)
         cell.font = HEADER_FONT
         cell.fill = HEADER_FILL
-        cell.alignment = Alignment(horizontal='center', vertical='center')
+        cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
         cell.border = THIN_BORDER
 
 
@@ -610,7 +610,7 @@ def style_data(ws, row, cols):
     for c in range(1, cols + 1):
         cell = ws.cell(row=row, column=c)
         cell.border = THIN_BORDER
-        cell.alignment = Alignment(vertical='center')
+        cell.alignment = Alignment(vertical='center', wrap_text=True)
 
 
 def style_subtotal(ws, row, cols):
@@ -619,9 +619,11 @@ def style_subtotal(ws, row, cols):
         cell.fill = SUBTOTAL_FILL
         cell.font = SUBTOTAL_FONT
         cell.border = THIN_BORDER
+        cell.alignment = Alignment(vertical='center', wrap_text=True)
 
 
-def auto_width(ws):
+def auto_width(ws, max_width=22):
+    """自動欄寬：上限預設 22（配合直式 A4 與 wrap_text 自動換行）"""
     for col in ws.columns:
         max_len = 0
         col_letter = get_column_letter(col[0].column)
@@ -632,7 +634,7 @@ def auto_width(ws):
                 max_len = max(max_len, length)
             except:
                 pass
-        ws.column_dimensions[col_letter].width = min(max_len + 4, 50)
+        ws.column_dimensions[col_letter].width = min(max_len + 2, max_width)
 
 
 def write_sheet_target(wb_out, target_records, title_text, is_first=True):
