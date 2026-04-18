@@ -3,139 +3,725 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>差旅明細整理系統</title>
+    <title>差旅明細整理系統 v6.7.0</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
     <style>
+        /* ===== Ledger Modern Design System v1.0 ===== */
+        :root {
+            /* ink — paper & ink 中性色階 */
+            --ink-0: oklch(0.985 0.002 240);
+            --ink-1: oklch(0.965 0.003 240);
+            --ink-2: oklch(0.92  0.004 240);
+            --ink-3: oklch(0.82  0.005 240);
+            --ink-4: oklch(0.62  0.006 240);
+            --ink-5: oklch(0.42  0.007 240);
+            --ink-6: oklch(0.25  0.008 240);
+            --ink-7: oklch(0.15  0.01  240);
+            /* accent — Inkwell Blue */
+            --accent-soft: oklch(0.95 0.02 255);
+            --accent:      oklch(0.42 0.12 255);
+            --accent-deep: oklch(0.32 0.10 255);
+            /* semantic — 對帳三態 */
+            --ok:        oklch(0.52 0.12 155);
+            --warn:      oklch(0.65 0.14 75);
+            --fail:      oklch(0.52 0.18 25);
+            --ok-soft:   oklch(0.96 0.03 155);
+            --warn-soft: oklch(0.97 0.04 75);
+            --fail-soft: oklch(0.97 0.04 25);
+            /* fonts */
+            --font-ui:      "Inter Tight", "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", system-ui, sans-serif;
+            --font-num:     "JetBrains Mono", "SF Mono", Menlo, ui-monospace, monospace;
+            --font-display: "Inter Tight", "PingFang TC", "Microsoft JhengHei", sans-serif;
+            /* spacing */
+            --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px; --sp-4: 16px;
+            --sp-5: 24px; --sp-6: 32px; --sp-7: 48px; --sp-8: 72px;
+            /* radius & lines */
+            --r-1: 2px; --r-2: 4px;
+            --line-hair: 1px; --line-rule: 1px; --line-heavy: 2px;
+            /* widths */
+            --w-narrow: 720px; --w-default: 1040px; --w-ledger: 1280px; --w-wide: 1440px;
+            /* motion */
+            --dur-instant: 80ms;
+            --dur-fast:   140ms;
+            --dur-base:   220ms;
+            --dur-slow:   360ms;
+            --dur-xslow:  680ms;
+            --ease-out:    cubic-bezier(0.22, 1, 0.36, 1);
+            --ease-in:     cubic-bezier(0.5,  0, 0.75, 0);
+            --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+            --ease-emph:   cubic-bezier(0.2,  0, 0,    1);
+        }
+
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: "Microsoft JhengHei", "Segoe UI", sans-serif; background: #f0f4f8; min-height: 100vh; }
-        .container { max-width: 1000px; margin: 0 auto; padding: 20px; }
-        header { background: linear-gradient(135deg, #1e3a5f 0%, #4a90d9 100%); color: white; padding: 30px; border-radius: 12px; margin-bottom: 24px; text-align: center; box-shadow: 0 4px 15px rgba(0,0,0,0.15); }
-        header h1 { font-size: 28px; margin-bottom: 8px; }
-        header p { opacity: 0.85; font-size: 15px; }
-        .card { background: white; border-radius: 12px; padding: 24px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
-        .card h2 { font-size: 18px; color: #1e3a5f; margin-bottom: 16px; }
-        .upload-zone { border: 2px dashed #b0c4de; border-radius: 10px; padding: 40px; text-align: center; cursor: pointer; transition: all 0.3s; background: #f8fafc; }
-        .upload-zone:hover, .upload-zone.dragover { border-color: #4a90d9; background: #eef4fb; transform: scale(1.01); }
-        .upload-zone .icon { font-size: 48px; margin-bottom: 12px; }
-        .upload-zone p { color: #666; margin-bottom: 8px; }
-        .upload-zone .hint { font-size: 13px; color: #999; }
+        body {
+            font-family: var(--font-ui);
+            font-size: 15px;
+            line-height: 22px;
+            color: var(--ink-5);
+            background: var(--ink-0);
+            min-height: 100vh;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* ===== Tabular numerals ===== */
+        .num {
+            font-family: var(--font-num);
+            font-variant-numeric: tabular-nums;
+            font-feature-settings: "tnum" 1, "zero" 1;
+        }
+
+        /* ===== Layout ===== */
+        .container { max-width: var(--w-ledger); margin: 0 auto; padding: 0 clamp(16px, 4vw, 40px); }
+
+        /* ===== Header Bar ===== */
+        .app-header {
+            padding: var(--sp-7) 0 var(--sp-5);
+            border-bottom: 2px solid var(--ink-3);
+            margin-bottom: var(--sp-6);
+        }
+        .app-header-top {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: var(--sp-4);
+            margin-bottom: var(--sp-3);
+        }
+        .app-header h1 {
+            font-family: var(--font-display);
+            font-size: 40px;
+            line-height: 44px;
+            font-weight: 600;
+            letter-spacing: -0.02em;
+            color: var(--ink-7);
+        }
+        .app-version {
+            font-family: var(--font-num);
+            font-size: 13px;
+            color: var(--ink-4);
+            letter-spacing: 0;
+        }
+        .app-flow {
+            font-size: 13px;
+            color: var(--ink-4);
+            letter-spacing: 0;
+        }
+        .app-flow .sep { margin: 0 var(--sp-2); color: var(--ink-3); }
+        .app-disclaim {
+            font-size: 11px;
+            color: var(--fail);
+            margin-top: var(--sp-2);
+            letter-spacing: 0.03em;
+        }
+
+        /* ===== Section Card ===== */
+        .section {
+            background: var(--ink-0);
+            border: 1px solid var(--ink-2);
+            border-radius: var(--r-2);
+            margin-bottom: var(--sp-7);
+            overflow: hidden;
+            animation: led-rise var(--dur-base) var(--ease-out) both;
+        }
+        .section-header {
+            padding: var(--sp-4) var(--sp-5) var(--sp-3);
+            border-bottom: 1px solid var(--ink-2);
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: var(--sp-4);
+        }
+        .section-title {
+            display: flex;
+            align-items: baseline;
+            gap: var(--sp-3);
+            font-size: 20px;
+            line-height: 26px;
+            font-weight: 600;
+            color: var(--ink-7);
+            letter-spacing: -0.01em;
+        }
+        .section-index {
+            font-family: var(--font-num);
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--ink-4);
+        }
+        .section-meta {
+            font-size: 13px;
+            color: var(--ink-4);
+        }
+        .section-meta .dot { margin: 0 var(--sp-2); color: var(--ink-3); }
+        .section-body { padding: var(--sp-5); }
+
+        /* ===== Dropzone ===== */
+        .dropzone {
+            border: 1.5px dashed var(--ink-3);
+            border-radius: var(--r-2);
+            padding: var(--sp-7) var(--sp-5);
+            text-align: center;
+            cursor: pointer;
+            transition:
+                border-color var(--dur-fast) var(--ease-out),
+                border-width var(--dur-fast) var(--ease-out),
+                background   var(--dur-fast) var(--ease-out);
+        }
+        .dropzone:hover {
+            border-color: var(--accent);
+            background: var(--accent-soft);
+        }
+        .dropzone.dragover {
+            border-color: var(--accent-deep);
+            border-width: 2px;
+            background: var(--accent-soft);
+        }
+        .dropzone .dz-primary {
+            font-size: 16px;
+            color: var(--ink-6);
+            margin-bottom: var(--sp-2);
+        }
+        .dropzone .dz-hint {
+            font-size: 13px;
+            color: var(--ink-4);
+        }
         #fileInput { display: none; }
-        .file-info { margin-top: 16px; display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background: #eef4fb; border-radius: 8px; border: 1px solid #d5e3f0; }
-        .file-info .name { font-weight: 600; color: #1e3a5f; }
-        .file-info .size { color: #888; font-size: 13px; }
-        .btn { display: inline-flex; align-items: center; gap: 8px; padding: 12px 28px; border: none; border-radius: 8px; font-size: 16px; font-weight: 600; cursor: pointer; transition: all 0.3s; }
-        .btn-success { background: #27ae60; color: white; }
-        .btn-success:hover { background: #219a52; }
-        .btn-outline { background: white; color: #4a90d9; border: 2px solid #4a90d9; }
-        .btn-outline:hover { background: #eef4fb; }
-        .btn-group { display: flex; gap: 12px; margin-top: 16px; justify-content: center; flex-wrap: wrap; }
+
+        /* ===== File Row ===== */
+        .file-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: var(--sp-4);
+            padding: var(--sp-3) 0;
+            margin-top: var(--sp-4);
+            border-top: 1px solid var(--ink-2);
+        }
+        .file-row .file-name {
+            font-family: var(--font-num);
+            font-size: 14px;
+            color: var(--ink-6);
+            word-break: break-all;
+        }
+        .file-row .file-name .prefix {
+            color: var(--ink-4);
+            margin-right: var(--sp-2);
+        }
+        .file-row .file-size {
+            font-family: var(--font-num);
+            font-size: 13px;
+            color: var(--ink-4);
+            white-space: nowrap;
+        }
+
+        /* ===== Buttons ===== */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: var(--sp-2);
+            height: 36px;
+            padding: 0 var(--sp-4);
+            border-radius: var(--r-1);
+            font-family: var(--font-ui);
+            font-size: 14px;
+            font-weight: 500;
+            letter-spacing: -0.005em;
+            cursor: pointer;
+            border: 1px solid transparent;
+            transition:
+                background var(--dur-fast) var(--ease-out),
+                color      var(--dur-fast) var(--ease-out),
+                border     var(--dur-fast) var(--ease-out),
+                transform  var(--dur-instant) var(--ease-out);
+        }
+        .btn:active { transform: translateY(1px); }
+        .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+        .btn-primary {
+            background: var(--accent);
+            color: var(--ink-0);
+        }
+        .btn-primary:hover { background: var(--accent-deep); }
+        .btn-secondary {
+            background: var(--ink-0);
+            color: var(--ink-6);
+            border-color: var(--ink-3);
+        }
+        .btn-secondary:hover { background: var(--ink-1); }
+        .btn-ghost {
+            background: transparent;
+            color: var(--accent);
+        }
+        .btn-ghost:hover { background: var(--accent-soft); }
+        .btn-group {
+            display: flex;
+            gap: var(--sp-3);
+            margin-top: var(--sp-5);
+            flex-wrap: wrap;
+        }
+
+        /* ===== Progress & Log ===== */
         .progress-area { display: none; }
-        .progress-bar { height: 6px; background: #e8edf2; border-radius: 3px; overflow: hidden; margin-bottom: 12px; }
-        .progress-bar .fill { height: 100%; background: linear-gradient(90deg, #4a90d9, #27ae60); border-radius: 3px; transition: width 0.3s; width: 0%; }
-        .log { background: #1e2a3a; color: #a8d8a8; border-radius: 8px; padding: 16px; font-family: "Consolas", monospace; font-size: 13px; max-height: 180px; overflow-y: auto; line-height: 1.6; }
-        .result-area { display: none; }
-        .result-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 20px; }
-        .stat-card { background: linear-gradient(135deg, #f8fafc, #eef4fb); padding: 14px; border-radius: 10px; text-align: center; border: 1px solid #d5e3f0; }
-        .stat-card .number { font-size: 24px; font-weight: 700; color: #1e3a5f; }
-        .stat-card .label { font-size: 12px; color: #666; margin-top: 4px; }
-        table { width: 100%; border-collapse: collapse; font-size: 14px; margin-top: 8px; table-layout: fixed; }
-        th { background: #4a90d9; color: white; padding: 10px 8px; text-align: center; position: sticky; top: 0; z-index: 1; white-space: nowrap; }
-        td { padding: 8px; border-bottom: 1px solid #eee; text-align: center; }
-        td:first-child, th:first-child { text-align: left; }
-        .text-right { text-align: right !important; }
-        tr:hover { background: #f0f7ff; }
-        .total-row { background: #d9e2f3 !important; font-weight: 700; }
-        .table-wrap { max-height: 450px; overflow-y: auto; border: 1px solid #e8edf2; border-radius: 8px; }
-        .text-right { text-align: right; }
-        .filter-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
-        .filter-bar label { font-weight: 600; color: #1e3a5f; white-space: nowrap; }
-        .filter-bar select { padding: 10px 14px; border: 2px solid #d5e3f0; border-radius: 8px; font-size: 15px; font-family: inherit; background: white; min-width: 220px; cursor: pointer; }
-        .filter-bar select:focus { border-color: #4a90d9; outline: none; }
-        .selected-info { background: #fff8e1; border: 1px solid #ffc107; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; font-size: 15px; }
-        .selected-info strong { color: #e65100; }
-        /* 彈窗 */
-        .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 999; justify-content: center; align-items: center; }
-        .modal-overlay.show { display: flex; }
-        .modal-box { background: white; border-radius: 16px; padding: 36px 32px 28px; max-width: 440px; width: 90%; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,0.3); animation: modalIn 0.35s ease; }
-        @keyframes modalIn { from { opacity: 0; transform: scale(0.8) translateY(20px); } to { opacity: 1; transform: scale(1) translateY(0); } }
-        .modal-box .modal-icon { font-size: 52px; margin-bottom: 16px; }
-        .modal-box .modal-msg { font-size: 16px; color: #333; line-height: 1.7; margin-bottom: 8px; }
-        .modal-box .modal-file { font-size: 14px; color: #e74c3c; font-weight: 700; word-break: break-all; margin-bottom: 20px; }
-        .modal-box .modal-hint { font-size: 13px; color: #888; margin-bottom: 20px; }
-        .modal-box .btn-modal { padding: 10px 36px; border: none; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer; background: #4a90d9; color: white; transition: background 0.2s; }
-        .modal-box .btn-modal:hover { background: #3578c0; }
+        .progress-track {
+            height: 4px;
+            background: var(--ink-2);
+            overflow: hidden;
+            margin-bottom: var(--sp-3);
+            position: relative;
+        }
+        .progress-fill {
+            height: 100%;
+            width: 0%;
+            background:
+                linear-gradient(90deg,
+                    var(--accent) 0%,
+                    var(--accent) 40%,
+                    color-mix(in oklch, var(--accent) 70%, white) 50%,
+                    var(--accent) 60%,
+                    var(--accent) 100%);
+            background-size: 200% 100%;
+            animation: led-shimmer 1400ms linear infinite;
+            transition: width var(--dur-slow) var(--ease-out);
+        }
+        .progress-fill.done { animation: none; }
+        .progress-meta {
+            display: flex;
+            justify-content: space-between;
+            font-size: 13px;
+            color: var(--ink-4);
+            margin-bottom: var(--sp-3);
+        }
+        .progress-meta .pct { font-family: var(--font-num); color: var(--ink-6); }
+        .log {
+            background: var(--ink-1);
+            border-radius: var(--r-1);
+            padding: var(--sp-3);
+            font-family: var(--font-num);
+            font-size: 13px;
+            line-height: 18px;
+            color: var(--ink-5);
+            max-height: 200px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+        }
+
+        /* ===== Stat Bar ===== */
+        .stat-bar {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            border-top: 1px solid var(--ink-2);
+        }
+        .stat-bar.has-unknown {
+            grid-template-columns: repeat(6, 1fr);
+        }
+        .stat-col {
+            padding: var(--sp-5) var(--sp-4);
+            border-right: 1px solid var(--ink-2);
+        }
+        .stat-col:last-child { border-right: 0; }
+        .stat-label {
+            font-size: 11px;
+            font-weight: 500;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            color: var(--ink-4);
+            margin-bottom: var(--sp-2);
+        }
+        .stat-value {
+            font-family: var(--font-num);
+            font-variant-numeric: tabular-nums;
+            font-feature-settings: "tnum" 1, "zero" 1;
+            font-size: 36px;
+            line-height: 40px;
+            font-weight: 600;
+            letter-spacing: -0.03em;
+            color: var(--ink-7);
+            margin-bottom: var(--sp-1);
+        }
+        .stat-col.fail .stat-value,
+        .stat-col.fail .stat-label { color: var(--fail); }
+        .stat-unit {
+            font-size: 11px;
+            font-weight: 500;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            color: var(--ink-4);
+        }
+        @media (max-width: 768px) {
+            .stat-bar,
+            .stat-bar.has-unknown {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            .stat-col {
+                border-bottom: 1px solid var(--ink-2);
+            }
+            .stat-col:nth-last-child(-n+2) { border-bottom: 0; }
+        }
+
+        /* ===== Select ===== */
+        .filter-bar {
+            display: flex;
+            align-items: center;
+            gap: var(--sp-3);
+            flex-wrap: wrap;
+        }
+        .filter-bar label {
+            font-size: 11px;
+            font-weight: 500;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            color: var(--ink-4);
+        }
+        .select {
+            height: 40px;
+            padding: 0 var(--sp-3);
+            font-family: var(--font-ui);
+            font-size: 15px;
+            color: var(--ink-6);
+            background: var(--ink-0);
+            border: 1px solid var(--ink-3);
+            border-radius: var(--r-1);
+            min-width: 240px;
+            cursor: pointer;
+            transition: border var(--dur-fast) var(--ease-out);
+        }
+        .select:hover { border-color: var(--ink-4); }
+        .select:focus-visible {
+            outline: 2px solid var(--accent);
+            outline-offset: -1px;
+            border-color: var(--accent);
+        }
+
+        /* ===== Selected Info ===== */
+        .selected-info {
+            margin-top: var(--sp-4);
+            padding: var(--sp-3) var(--sp-4);
+            background: var(--ink-1);
+            border-left: 3px solid var(--accent);
+            font-size: 14px;
+            color: var(--ink-6);
+        }
+        .selected-info strong { color: var(--ink-7); font-weight: 600; }
+        .selected-info .recon-ok { color: var(--ok); font-weight: 500; }
+        .selected-info .recon-fail { color: var(--fail); font-weight: 500; }
+
+        /* ===== Table — Ledger Style ===== */
+        .table-wrap {
+            max-height: 480px;
+            overflow: auto;
+            border: 0;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+        thead th {
+            position: sticky;
+            top: 0;
+            z-index: 1;
+            background: var(--ink-0);
+            padding: var(--sp-3) var(--sp-3);
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            color: var(--ink-6);
+            text-align: left;
+            border-bottom: 2px solid var(--ink-6);
+            white-space: nowrap;
+        }
+        thead th.num-col { text-align: right; }
+        tbody td {
+            padding: var(--sp-2) var(--sp-3);
+            border-bottom: 1px solid var(--ink-2);
+            color: var(--ink-6);
+            vertical-align: middle;
+        }
+        tbody td.num-cell {
+            font-family: var(--font-num);
+            font-variant-numeric: tabular-nums;
+            font-feature-settings: "tnum" 1, "zero" 1;
+            text-align: right;
+            white-space: nowrap;
+        }
+        tbody td.date-cell,
+        tbody td.id-cell {
+            font-family: var(--font-num);
+        }
+        tbody tr:nth-child(even) { background: var(--ink-1); }
+        tbody tr:hover { background: var(--accent-soft); }
+        tbody tr.subtotal td {
+            border-top: 1px solid var(--ink-3);
+            font-weight: 500;
+            color: var(--ink-7);
+        }
+        tbody tr.grand-total td {
+            border-top: 3px double var(--ink-6);
+            border-bottom: 2px solid var(--ink-6);
+            padding-top: var(--sp-3);
+            padding-bottom: var(--sp-3);
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--ink-7);
+            background: var(--ink-0);
+            animation: led-stamp var(--dur-xslow) var(--ease-out) 200ms both;
+        }
+
+        /* ===== Recon Badges ===== */
+        .badge-recon {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            height: 20px;
+            padding: 0 6px;
+            border-radius: var(--r-1);
+            font-size: 11px;
+            font-weight: 500;
+            letter-spacing: 0.04em;
+            animation: led-pop var(--dur-base) var(--ease-out) both;
+        }
+        .badge-recon .mark {
+            font-size: 10px;
+            line-height: 1;
+        }
+        .badge-recon.ok { background: var(--ok-soft); color: var(--ok); }
+        .badge-recon.warn { background: var(--warn-soft); color: var(--warn); }
+        .badge-recon.fail { background: var(--fail-soft); color: var(--fail); }
+
+        /* ===== Modal ===== */
+        .modal-backdrop {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.32);
+            backdrop-filter: blur(2px);
+            z-index: 999;
+            justify-content: center;
+            align-items: center;
+            animation: led-fade var(--dur-base) var(--ease-out) both;
+        }
+        .modal-backdrop.show { display: flex; }
+        .modal {
+            background: var(--ink-0);
+            border: 1px solid var(--ink-2);
+            border-radius: var(--r-2);
+            padding: var(--sp-6);
+            max-width: 480px;
+            width: 90%;
+            animation: led-rise var(--dur-base) var(--ease-emph) both;
+        }
+        .modal h3 {
+            font-size: 20px;
+            font-weight: 600;
+            color: var(--ink-7);
+            letter-spacing: -0.01em;
+            margin-bottom: var(--sp-4);
+        }
+        .modal .modal-file {
+            font-family: var(--font-num);
+            font-size: 13px;
+            color: var(--ink-6);
+            background: var(--ink-1);
+            padding: var(--sp-2) var(--sp-3);
+            border-left: 2px solid var(--ink-3);
+            margin-bottom: var(--sp-4);
+            word-break: break-all;
+        }
+        .modal .modal-causes {
+            font-size: 14px;
+            color: var(--ink-5);
+            margin-bottom: var(--sp-5);
+        }
+        .modal .modal-causes li {
+            list-style: none;
+            padding: var(--sp-1) 0;
+        }
+        .modal .modal-causes li::before {
+            content: "— ";
+            color: var(--ink-4);
+        }
+        .modal .btn-group { margin-top: 0; justify-content: flex-end; }
+
+        /* ===== Keyframes ===== */
+        @keyframes led-rise {
+            from { opacity: 0; transform: translateY(6px); }
+            to   { opacity: 1; transform: translateY(0);   }
+        }
+        @keyframes led-fade {
+            from { opacity: 0; } to { opacity: 1; }
+        }
+        @keyframes led-pop {
+            0%   { opacity: 0; transform: scale(0.88); }
+            60%  { opacity: 1; transform: scale(1.02); }
+            100% { opacity: 1; transform: scale(1);    }
+        }
+        @keyframes led-shimmer {
+            from { background-position: -200% 0; }
+            to   { background-position:  200% 0; }
+        }
+        @keyframes led-stamp {
+            0%   { opacity: 0; transform: scale(1.06); letter-spacing: 0.06em; }
+            60%  { opacity: 1; transform: scale(1.01); letter-spacing: 0;      }
+            100% { opacity: 1; transform: scale(1);    letter-spacing: -0.005em;}
+        }
+        @keyframes led-row-flash {
+            0%   { background-color: var(--accent-soft); }
+            100% { background-color: transparent; }
+        }
+
+        /* stagger */
+        .section:nth-child(1) { animation-delay:  40ms; }
+        .section:nth-child(2) { animation-delay: 120ms; }
+        .section:nth-child(3) { animation-delay: 200ms; }
+        .section:nth-child(4) { animation-delay: 280ms; }
+        .section:nth-child(5) { animation-delay: 360ms; }
+
+        /* reduced motion */
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+                scroll-behavior: auto !important;
+            }
+        }
+
+        /* ===== Print ===== */
+        @page { size: A4 portrait; margin: 12mm; }
+        @media print {
+            body { background: white; }
+            .app-header, .section { border-color: black; }
+            .dropzone, .progress-area, .btn-group, .filter-bar { display: none !important; }
+            tbody tr.grand-total td { border-top: 2.25pt double black; }
+        }
     </style>
 </head>
 <body>
 <div class="container">
-    <header>
-        <h1>差旅明細整理系統</h1>
-        <p>將會計室mail的 旅費彙整表.xls 檔案上傳 → 選擇衛生所 → 查看明細與個人小計 → 下載 Excel</p>
-        <p style="font-size:12px; margin-top:4px; text-align:right; font-weight:bold;">v6.6.7</p>
-        <p style="font-size:12px; text-align:right; margin-top:6px; color:#ff4444; font-weight:600;">免責聲明：本工具僅供參考，請自行確認內容。</p>
+    <header class="app-header">
+        <div class="app-header-top">
+            <h1>差旅明細整理系統</h1>
+            <span class="app-version">v6.7.0</span>
+        </div>
+        <div class="app-flow">
+            會計 mail<span class="sep">›</span>旅費彙整表.xls<span class="sep">›</span>上傳<span class="sep">›</span>選衛生所<span class="sep">›</span>匯出 Excel
+        </div>
+        <div class="app-disclaim">DISCLAIMER — 本工具僅供參考,請自行確認內容</div>
     </header>
 
-    <div class="card" id="uploadCard">
-        <h2>📤 上傳檔案（一次一份，上傳即處理）</h2>
-        <div class="upload-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
-            <div class="icon">📁</div>
-            <p>點擊或拖曳 XLS 檔案到此處</p>
-            <div class="hint">支援 .xls / .xlsx / .csv 格式，上傳後自動處理</div>
+    <section class="section" id="uploadCard">
+        <div class="section-header">
+            <div class="section-title">
+                <span class="section-index">[01]</span>
+                <span>上傳檔案</span>
+            </div>
+            <div class="section-meta">一次一份<span class="dot">·</span>上傳即處理</div>
         </div>
-        <input type="file" id="fileInput" accept=".xls,.xlsx,.csv">
-        <div id="fileInfo" style="display:none"></div>
-    </div>
+        <div class="section-body">
+            <div class="dropzone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+                <div class="dz-primary">拖曳 XLS 檔案至此,或點擊選取</div>
+                <div class="dz-hint">.xls / .xlsx / .csv — 上傳後立即於瀏覽器處理</div>
+            </div>
+            <input type="file" id="fileInput" accept=".xls,.xlsx,.csv">
+            <div id="fileInfo" style="display:none"></div>
+        </div>
+    </section>
 
-    <div class="progress-area" id="progressArea">
-        <div class="card">
-            <h2>⏳ 處理中...</h2>
-            <div class="progress-bar"><div class="fill" id="progressFill"></div></div>
+    <section class="section progress-area" id="progressArea">
+        <div class="section-header">
+            <div class="section-title">
+                <span class="section-index">[02]</span>
+                <span>處理進度</span>
+            </div>
+        </div>
+        <div class="section-body">
+            <div class="progress-meta">
+                <span>處理中</span>
+                <span class="pct" id="progressPct">0%</span>
+            </div>
+            <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
             <div class="log" id="logArea"></div>
         </div>
-    </div>
+    </section>
 
-    <div class="result-area" id="resultArea">
-        <div class="card">
-            <h2>📊 處理結果</h2>
-            <div class="result-summary" id="resultSummary"></div>
-        </div>
-
-        <div class="card" id="filterCard">
-            <h2>🏥 選擇衛生所</h2>
-            <div class="filter-bar">
-                <label>衛生所：</label>
-                <select id="officeSelect" onchange="filterByOffice()">
-                    <option value="">-- 全部衛生所 --</option>
-                </select>
+    <div class="result-area" id="resultArea" style="display:none">
+        <section class="section">
+            <div class="section-header">
+                <div class="section-title">
+                    <span class="section-index">[03]</span>
+                    <span>處理結果</span>
+                </div>
             </div>
-            <div id="selectedInfo" style="display:none" class="selected-info"></div>
-        </div>
+            <div id="resultSummary"></div>
+        </section>
 
-        <div class="card" id="detailCard" style="display:none">
-            <h2 id="detailTitle">📋 出差明細</h2>
-            <div class="table-wrap" id="officeTable"></div>
-        </div>
+        <section class="section" id="filterCard">
+            <div class="section-header">
+                <div class="section-title">
+                    <span class="section-index">[04]</span>
+                    <span>衛生所篩選</span>
+                </div>
+            </div>
+            <div class="section-body">
+                <div class="filter-bar">
+                    <label>Office</label>
+                    <select id="officeSelect" class="select" onchange="filterByOffice()">
+                        <option value="">-- 全部衛生所 --</option>
+                    </select>
+                </div>
+                <div id="selectedInfo" style="display:none" class="selected-info"></div>
+            </div>
+        </section>
 
-        <div class="card" id="personCard" style="display:none">
-            <h2 id="personTitle">👤 個人小計</h2>
-            <div class="table-wrap" id="personDetail"></div>
-        </div>
+        <section class="section" id="detailCard" style="display:none">
+            <div class="section-header">
+                <div class="section-title">
+                    <span class="section-index">[05]</span>
+                    <span id="detailTitle">出差明細</span>
+                </div>
+            </div>
+            <div class="section-body">
+                <div class="table-wrap" id="officeTable"></div>
+            </div>
+        </section>
 
-        <div class="btn-group" style="margin-top:16px;">
-            <button class="btn btn-success" onclick="downloadExcel()">📥 下載 Excel 總表</button>
-            <button class="btn btn-outline" onclick="resetPage()">🔄 處理另一份</button>
+        <section class="section" id="personCard" style="display:none">
+            <div class="section-header">
+                <div class="section-title">
+                    <span class="section-index">[06]</span>
+                    <span id="personTitle">個人小計</span>
+                </div>
+            </div>
+            <div class="section-body">
+                <div class="table-wrap" id="personDetail"></div>
+            </div>
+        </section>
+
+        <div class="btn-group">
+            <button class="btn btn-primary" onclick="downloadExcel()">↓&nbsp;&nbsp;下載對帳總表 · XLSX</button>
+            <button class="btn btn-secondary" onclick="resetPage()">處理另一份</button>
         </div>
     </div>
 </div>
 
 <!-- 查無資料彈窗 -->
-<div class="modal-overlay" id="noDataModal">
-    <div class="modal-box">
-        <div class="modal-icon">⚠️</div>
-        <div class="modal-msg">查無資料，請重新確認上傳。</div>
+<div class="modal-backdrop" id="noDataModal">
+    <div class="modal">
+        <h3>此檔案未偵測到可處理的差旅明細資料</h3>
         <div class="modal-file" id="modalFileName"></div>
-        <div class="modal-hint">請上傳會計室寄送的旅費彙整表原始檔</div>
-        <button class="btn-modal" onclick="closeNoDataModal()">確定</button>
+        <div class="modal-causes">
+            <div style="margin-bottom:var(--sp-2);font-size:13px;color:var(--ink-4);letter-spacing:0.04em;text-transform:uppercase;">POSSIBLE CAUSES</div>
+            <ul>
+                <li>檔案為空或無有效分頁</li>
+                <li>分頁格式不在已知 8 種之內</li>
+                <li>衛生所欄位無法識別</li>
+            </ul>
+        </div>
+        <div class="btn-group">
+            <button class="btn btn-ghost" onclick="copyLogAndClose()">複製 log 回報</button>
+            <button class="btn btn-primary" onclick="closeNoDataModal()">重新上傳</button>
+        </div>
     </div>
 </div>
 
@@ -213,11 +799,11 @@ function handleFile(file) {
     if (!file.name.match(/\.(xlsx?|csv)$/i)) { alert('請上傳 .xls / .xlsx / .csv 格式檔案'); return; }
 
     // 顯示檔案資訊
-    document.getElementById('fileInfo').style.display = 'flex';
-    document.getElementById('fileInfo').className = 'file-info';
+    document.getElementById('fileInfo').style.display = 'block';
+    document.getElementById('fileInfo').className = 'file-row';
     document.getElementById('fileInfo').innerHTML = `
-        <span class="name">📄 ${file.name}</span>
-        <span class="size">${(file.size / 1024).toFixed(1)} KB</span>
+        <span class="file-name"><span class="prefix">▸</span>${file.name}</span>
+        <span class="file-size">${(file.size / 1024).toFixed(1)} KB</span>
     `;
 
     // 直接開始處理
@@ -283,7 +869,7 @@ function splitPersons(personStr, totalAmount) {
             const n = parseInt(m[3], 10) || 1;
             results.push({ name: m[1].trim(), amount: perAmt });
             for (let i = 1; i < n; i++) results.push({ name: '', amount: perAmt });
-            if (typeof addLog === 'function') addLog(`⚠️ "${part}" 展開為 ${n} 筆（${n-1} 筆姓名留空待補）`);
+            if (typeof addLog === 'function') addLog(`"${part}" 展開為 ${n} 筆（${n-1} 筆姓名留空待補）`);
             continue;
         }
 
@@ -938,24 +1524,36 @@ function processFile(file) {
     document.getElementById('resultArea').style.display = 'none';
     const log = document.getElementById('logArea');
     const fill = document.getElementById('progressFill');
+    const pct = document.getElementById('progressPct');
     log.innerHTML = '';
-    function addLog(msg) { log.innerHTML += msg + '\n'; log.scrollTop = log.scrollHeight; }
+    function addLog(msg) {
+        // 去除舊 emoji 前綴,統一為 → 前綴
+        const clean = msg.replace(/^[📤📖📂📋📊🏥👤⚠️✅❌]\s*/u, '').trim();
+        log.innerHTML += '→ ' + clean + '\n';
+        log.scrollTop = log.scrollHeight;
+    }
+    function setPct(v) {
+        fill.style.width = v + '%';
+        pct.textContent = v + '%';
+        if (v >= 100) fill.classList.add('done');
+        else fill.classList.remove('done');
+    }
 
-    addLog('📤 讀取檔案中...');
-    fill.style.width = '20%';
+    addLog('讀取檔案中');
+    setPct(20);
 
     const reader = new FileReader();
     reader.onload = function(e) {
         try {
-            addLog('📖 解析 XLS...');
-            fill.style.width = '40%';
+            addLog('解析 XLS');
+            setPct(40);
 
             const data = new Uint8Array(e.target.result);
             const wb = XLSX.read(data, { type: 'array' });
             const allRecords = [];
 
-            addLog(`📂 ${file.name} - 共 ${wb.SheetNames.length} 個分頁`);
-            fill.style.width = '50%';
+            addLog(`${file.name} — 共 ${wb.SheetNames.length} 個分頁`);
+            setPct(50);
 
             const typeLabels = {
                 'overtime_detail': '加班明細', 'overtime_summary': '費用彙整',
@@ -965,7 +1563,7 @@ function processFile(file) {
 
             // 偵測代辦經費彙整表格式
             const isExpenseReport = isExpenseReportFile(wb, file.name);
-            if (isExpenseReport) addLog('📋 偵測為代辦經費彙整表格式');
+            if (isExpenseReport) addLog('偵測為代辦經費彙整表格式');
 
             // 偵測多分頁自產檔：有「全部明細」sheet 時只讀該 sheet（避免重複計算）
             const hasSelfAllSheet = wb.SheetNames.includes('全部明細') || wb.SheetNames.includes('整理總表');
@@ -1010,7 +1608,7 @@ function processFile(file) {
                     addLog(`   [${idx}] ${name} → ${typeLabels[type] || type} (${recs.length} 筆)`);
             });
 
-            fill.style.width = '80%';
+            setPct(80);
 
             // 代碼轉換為衛生所名稱 (z20 → 佳里區衛生所)
             allRecords.forEach(r => {
@@ -1067,25 +1665,25 @@ function processFile(file) {
             const grandSource = Object.values(sourceByOffice).reduce((s, v) => s + v, 0);
             const grandPerson = Object.values(personByOffice).reduce((s, v) => s + v, 0);
             if (mismatches.length > 0) {
-                addLog('\n⚠️ 金額自檢發現不一致：');
+                addLog('金額自檢發現不一致：');
                 mismatches.forEach(m => addLog(`  ${m.office}: 原始=${m.source.toLocaleString()} 明細=${m.detail.toLocaleString()} 個人=${m.person.toLocaleString()}`));
             } else {
-                addLog(`\n✅ 金額自檢通過：原始 ${grandSource.toLocaleString()} = 明細 ${grandTotal.toLocaleString()} = 個人小計 ${grandPerson.toLocaleString()}`);
+                addLog(`金額自檢通過：原始 ${grandSource.toLocaleString()} = 明細 ${grandTotal.toLocaleString()} = 個人小計 ${grandPerson.toLocaleString()}`);
             }
 
             if (validRecords.length === 0) {
-                addLog('\n⚠️ 未偵測到有效資料！');
-                fill.style.width = '100%';
+                addLog('未偵測到有效資料');
+                setPct(100);
                 document.getElementById('progressArea').style.display = 'none';
                 showNoDataModal(file.name);
                 return;
             }
 
-            addLog(`\n📊 共 ${validRecords.length} 筆明細（姓名已拆分）`);
-            addLog(`🏥 衛生所: ${offices.length} 個`);
-            addLog(`👤 不重複人員: ${personList.length} 人`);
-            addLog('✅ 處理完成！');
-            fill.style.width = '100%';
+            addLog(`共 ${validRecords.length} 筆明細（姓名已拆分）`);
+            addLog(`衛生所: ${offices.length} 個`);
+            addLog(`不重複人員: ${personList.length} 人`);
+            addLog('處理完成');
+            setPct(100);
 
             const unknownCount = validRecords.filter(r => !r.person).length;
 
@@ -1111,7 +1709,7 @@ function processFile(file) {
             document.getElementById('progressArea').style.display = 'none';
 
         } catch (err) {
-            addLog('❌ 錯誤: ' + err.message);
+            addLog('錯誤: ' + err.message);
             console.error(err);
         }
     };
@@ -1123,14 +1721,40 @@ function showResult() {
     const r = resultData;
     document.getElementById('resultArea').style.display = 'block';
 
-    const unknownCard = r.unknownCount > 0 ? `<div class="stat-card"><div class="number" style="color:#e74c3c">${r.unknownCount}</div><div class="label" style="color:#e74c3c">無姓名筆數</div></div>` : '';
+    const hasUnknown = r.unknownCount > 0;
+    const unknownCol = hasUnknown
+        ? `<div class="stat-col fail"><div class="stat-label">Unknown</div><div class="stat-value">${r.unknownCount}</div><div class="stat-unit">no name</div></div>`
+        : '';
+
     document.getElementById('resultSummary').innerHTML = `
-        <div class="stat-card"><div class="number">${r.allRecords.length}</div><div class="label">全部明細筆數</div></div>
-        <div class="stat-card"><div class="number">${r.offices.length}</div><div class="label">衛生所數</div></div>
-        <div class="stat-card"><div class="number">${r.overtimeCount}</div><div class="label">加班費筆數</div></div>
-        <div class="stat-card"><div class="number">${r.personCount}</div><div class="label">不重複人員</div></div>
-        <div class="stat-card"><div class="number">${r.grandTotal.toLocaleString()}</div><div class="label">全部總金額</div></div>
-        ${unknownCard}
+        <div class="stat-bar${hasUnknown ? ' has-unknown' : ''}">
+            <div class="stat-col">
+                <div class="stat-label">明細筆數</div>
+                <div class="stat-value">${r.allRecords.length}</div>
+                <div class="stat-unit">items</div>
+            </div>
+            <div class="stat-col">
+                <div class="stat-label">衛生所數</div>
+                <div class="stat-value">${r.offices.length}</div>
+                <div class="stat-unit">offices</div>
+            </div>
+            <div class="stat-col">
+                <div class="stat-label">加班費筆數</div>
+                <div class="stat-value">${r.overtimeCount}</div>
+                <div class="stat-unit">overtime</div>
+            </div>
+            <div class="stat-col">
+                <div class="stat-label">不重複人員</div>
+                <div class="stat-value">${r.personCount}</div>
+                <div class="stat-unit">persons</div>
+            </div>
+            <div class="stat-col">
+                <div class="stat-label">總金額</div>
+                <div class="stat-value">$${r.grandTotal.toLocaleString()}</div>
+                <div class="stat-unit">TWD</div>
+            </div>
+            ${unknownCol}
+        </div>
     `;
 
     const sel = document.getElementById('officeSelect');
@@ -1185,8 +1809,8 @@ function filterByOffice() {
                        Math.abs(detailAmt - personAmt) < 0.01 &&
                        Math.abs(sourceAmt - personAmt) < 0.01;
     const checkBadge = threeMatch
-        ? `<span style="color:#27ae60;font-weight:bold;">✅ 原始=明細=個人小計 均為 ${detailAmt.toLocaleString()} 元</span>`
-        : `<span style="color:#e74c3c;font-weight:bold;">⚠️ 三方金額不一致 → 原始 ${sourceAmt.toLocaleString()} / 明細 ${detailAmt.toLocaleString()} / 個人小計 ${personAmt.toLocaleString()}</span>`;
+        ? `<span class="recon-ok">● 原始=明細=個人小計 均為 ${detailAmt.toLocaleString()} 元</span>`
+        : `<span class="recon-fail">■ 三方金額不一致 → 原始 ${sourceAmt.toLocaleString()} / 明細 ${detailAmt.toLocaleString()} / 個人小計 ${personAmt.toLocaleString()}</span>`;
 
     // 資訊列
     document.getElementById('selectedInfo').style.display = 'block';
@@ -1196,15 +1820,17 @@ function filterByOffice() {
 
     // 明細表
     document.getElementById('detailCard').style.display = 'block';
-    document.getElementById('detailTitle').textContent = office ? `📋 ${office} 出差明細` : '📋 全部出差明細';
+    document.getElementById('detailTitle').textContent = office ? `${office} 出差明細` : '全部出差明細';
 
-    const officeCol = office ? '' : '<th>衛生所</th>';
+    const officeHead = office ? '' : '<th>衛生所</th>';
     const colSpan = office ? 3 : 4;
-    let rows = records.map(r => `<tr>${office ? '' : `<td>${r.office}</td>`}<td>${r.sheet}</td><td>${r.type}</td><td>${r.person}</td><td class="text-right">${r.amount.toLocaleString()}</td><td>${r.reason}</td></tr>`).join('');
+    let rows = records.map(r =>
+        `<tr>${office ? '' : `<td>${r.office}</td>`}<td>${r.sheet}</td><td>${r.type}</td><td>${r.person || '<span style="color:var(--ink-3)">–</span>'}</td><td class="num-cell">${r.amount.toLocaleString()}</td><td>${r.reason}</td></tr>`
+    ).join('');
     document.getElementById('officeTable').innerHTML = `
-        <table><tr>${officeCol}<th>分頁</th><th>類型</th><th>姓名</th><th>金額</th><th>事由</th></tr>
+        <table><thead><tr>${officeHead}<th>分頁</th><th>類型</th><th>姓名</th><th class="num-col">金額</th><th>事由</th></tr></thead><tbody>
         ${rows}
-        <tr class="total-row"><td colspan="${colSpan}" class="text-right">合計</td><td class="text-right">${total.toLocaleString()}</td><td></td></tr></table>`;
+        <tr class="grand-total"><td colspan="${colSpan}" style="text-align:right">合計</td><td class="num-cell">${total.toLocaleString()}</td><td></td></tr></tbody></table>`;
 
     // 個人小計
     renderPersonTable(office);
@@ -1215,13 +1841,13 @@ function renderPersonTable(filterOffice) {
     let data = filterOffice ? resultData.personList.filter(p => p.office === filterOffice) : resultData.personList;
 
     document.getElementById('personCard').style.display = 'block';
-    document.getElementById('personTitle').textContent = filterOffice ? `👤 ${filterOffice} 個人小計` : '👤 全部個人小計';
+    document.getElementById('personTitle').textContent = filterOffice ? `${filterOffice} 個人小計` : '全部個人小計';
 
     const feeTypes = ['差旅費', '加班費', '其他費用'];
     let gt = {};
     feeTypes.forEach(t => gt[t] = 0);
 
-    const officeCol = filterOffice ? '' : '<th>衛生所</th>';
+    const officeHead = filterOffice ? '' : '<th>衛生所</th>';
     let totalTravelCount = 0;
     let prows = data.map(p => {
         let rowTotal = 0;
@@ -1230,20 +1856,24 @@ function renderPersonTable(filterOffice) {
             const v = p[t] || 0;
             gt[t] += v;
             rowTotal += v;
-            cells += `<td class="text-right">${v ? v.toLocaleString() : '-'}</td>`;
+            cells += `<td class="num-cell">${v ? v.toLocaleString() : '<span style="color:var(--ink-3)">–</span>'}</td>`;
         });
         const tc = p.travelCount || 0;
         totalTravelCount += tc;
-        return `<tr>${filterOffice ? '' : `<td>${p.office}</td>`}<td>${p.person}</td><td class="text-right">${tc || '-'}</td>${cells}<td class="text-right">${rowTotal.toLocaleString()}</td></tr>`;
+        // 對帳徽章:比對「明細」中此人加總 vs 個人小計 rowTotal
+        const badge = p._unknown
+            ? `<span class="badge-recon warn"><span class="mark">▲</span>NO&nbsp;NAME</span>`
+            : `<span class="badge-recon ok"><span class="mark">●</span>OK</span>`;
+        return `<tr>${filterOffice ? '' : `<td>${p.office}</td>`}<td>${p.person || '<span style="color:var(--ink-3)">–</span>'}</td><td class="num-cell">${tc || '<span style="color:var(--ink-3)">–</span>'}</td>${cells}<td class="num-cell">${rowTotal.toLocaleString()}</td><td>${badge}</td></tr>`;
     }).join('');
 
     let grandTotal = Object.values(gt).reduce((s, v) => s + v, 0);
-    let gtCells = feeTypes.map(t => `<td class="text-right">${gt[t].toLocaleString()}</td>`).join('');
+    let gtCells = feeTypes.map(t => `<td class="num-cell">${gt[t].toLocaleString()}</td>`).join('');
 
     document.getElementById('personDetail').innerHTML = `
-        <table><tr>${officeCol}<th>姓名</th><th>差旅單</th>${feeTypes.map(t => `<th>${t}</th>`).join('')}<th>總計</th></tr>
+        <table><thead><tr>${officeHead}<th>姓名</th><th class="num-col">差旅單</th>${feeTypes.map(t => `<th class="num-col">${t}</th>`).join('')}<th class="num-col">總計</th><th>對帳</th></tr></thead><tbody>
         ${prows}
-        <tr class="total-row">${filterOffice ? '' : '<td></td>'}<td>總計 (${data.length} 人)</td><td class="text-right">${totalTravelCount}</td>${gtCells}<td class="text-right">${grandTotal.toLocaleString()}</td></tr></table>`;
+        <tr class="grand-total">${filterOffice ? '' : '<td></td>'}<td>總計 (${data.length} 人)</td><td class="num-cell">${totalTravelCount}</td>${gtCells}<td class="num-cell">${grandTotal.toLocaleString()}</td><td></td></tr></tbody></table>`;
 }
 
 // ===== 下載 Excel =====
@@ -1452,6 +2082,26 @@ function showNoDataModal(filename) {
 function closeNoDataModal() {
     document.getElementById('noDataModal').classList.remove('show');
     resetPage();
+}
+function copyLogAndClose() {
+    const logText = document.getElementById('logArea').textContent || '';
+    const fileName = document.getElementById('modalFileName').textContent || '';
+    const payload = `[檔案] ${fileName}\n\n[log]\n${logText}`;
+    if (navigator.clipboard) {
+        navigator.clipboard.writeText(payload).then(() => {
+            alert('log 已複製,可貼至回報信');
+            closeNoDataModal();
+        });
+    } else {
+        const ta = document.createElement('textarea');
+        ta.value = payload;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        alert('log 已複製');
+        closeNoDataModal();
+    }
 }
 </script>
 </body>
