@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>差旅明細整理系統 v6.7.1</title>
+    <title>差旅明細整理系統 v6.7.2</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -627,8 +627,51 @@
             animation: led-tally var(--dur-slow) var(--ease-out) 200ms forwards;
         }
 
-        /* ===== Total金額強調(不違反 ink-6 規則,靠粗細+大小) ===== */
+        /* ===== Total金額強調 ===== */
         .stat-col:last-child .stat-value { color: var(--ink-7); }
+
+        /* ===== v6.7.2 補色彩 ===== */
+        /* stat 最後一欄(總計)加 accent-soft 底色 + 左 3px accent 條 */
+        .stat-col:last-child {
+            background: linear-gradient(180deg, var(--accent-soft) 0%, transparent 100%);
+            position: relative;
+        }
+        .stat-col:last-child::after {
+            content: "";
+            position: absolute;
+            left: 0; top: 20%; bottom: 20%;
+            width: 3px;
+            background: var(--accent);
+            border-radius: 0 var(--r-1) var(--r-1) 0;
+        }
+        /* app-header 加淡藍 bg gradient */
+        .app-header {
+            background: linear-gradient(180deg, var(--accent-soft) 0%, transparent 60%);
+            padding-left: var(--sp-4);
+            padding-right: var(--sp-4);
+            margin-left: calc(-1 * var(--sp-4));
+            margin-right: calc(-1 * var(--sp-4));
+        }
+        /* 明細列 hover 提示可查原始資料 */
+        tbody tr.src-row { cursor: help; transition: background var(--dur-fast) var(--ease-out); }
+        tbody tr.src-row:hover td { background: var(--accent-soft); }
+        tbody tr.src-row:hover td:first-child {
+            box-shadow: inset 3px 0 0 var(--accent);
+        }
+        /* badge-recon.ok 飽和度微調,通過更明顯 */
+        .badge-recon.ok {
+            background: var(--ok-soft);
+            color: var(--ok);
+        }
+        .badge-recon.warn {
+            background: var(--warn-soft);
+            color: oklch(0.45 0.14 75);
+        }
+        /* filter-bar 選定區微亮 */
+        .selected-info {
+            background: linear-gradient(90deg, var(--accent-soft) 0%, transparent 40%);
+            border-left: 3px solid var(--accent);
+        }
 
         /* ===== Keyframes ===== */
         @keyframes led-rise {
@@ -710,7 +753,7 @@
     <header class="app-header">
         <div class="app-header-top">
             <h1>差旅明細整理系統</h1>
-            <span class="app-version">v6.7.1</span>
+            <span class="app-version">v6.7.2</span>
         </div>
         <div class="app-flow">
             會計室信件<span class="sep">›</span>旅費彙整表.xls<span class="sep">›</span>上傳<span class="sep">›</span>選衛生所<span class="sep">›</span>匯出 Excel
@@ -994,14 +1037,33 @@ function cleanPersonName(s) {
 
 function splitPersons(personStr, totalAmount) {
     if (!personStr || !personStr.trim()) return [{ name: '', amount: totalAmount }];
-    // v6.6.3 智慧辨識：支援多種人名+金額格式，嚴格遵守「人名不遺漏、找不到則留空給使用者補」
+    // v6.7.2 修:
+    //   (0) 清除日期片段避免 / 當分隔符誤拆 (例 "1/19" 被當成 + 造成「1」「19林秉蓁」)
+    //   (1b) 先保護「姓名1、姓名2…$金額*N人」群組,避免 、/+ 把它拆散
     let text = personStr.trim();
 
-    // (1) 先正規化金額：把 $ 後面的千分位 , 與 "元" 字拿掉，避免 , 被當人名分隔符、元 吃掉匹配
+    // (0) 清除日期片段 — 2026/3/4、1/12、46086(Excel序號) 不屬姓名
+    text = text.replace(/\b\d{4}\/\d{1,2}\/\d{1,2}\b/g, ' ');
+    text = text.replace(/(?<!\d)\d{1,2}\/\d{1,2}(?!\d)/g, ' ');
+
+    // (1) 正規化金額:千分位 , 與 "元" 字
     text = text.replace(/\$\s*(\d{1,3}(?:,\d{3})+(?:\.\d+)?)\s*元?/g, (_, n) => '$' + n.replace(/,/g, ''));
     text = text.replace(/\$\s*(\d+(?:\.\d+)?)\s*元/g, (_, n) => '$' + n);
 
-    // (2) 多種分隔符拆分：+ ＋ 、 , ， / ・ & 及 和 兼（中文「及/和/兼」前後允許空白）
+    // (1b) 保護「NAMES$X*N人」群組,用占位符替換
+    const groupMap = {};
+    let gIdx = 0;
+    text = text.replace(/([\u4e00-\u9fff][\u4e00-\u9fff、，,＋+\s]*?)\s*\$\s*(\d+(?:\.\d+)?)\s*\*\s*(\d+)\s*人?/g, (_, names, amt, n) => {
+        const key = `\u0000G${gIdx++}\u0000`;
+        groupMap[key] = {
+            names: names.trim().split(/[、,，+＋]/).map(s => s.trim()).filter(Boolean),
+            perAmount: parseFloat(amt),
+            count: parseInt(n, 10) || 1
+        };
+        return key;
+    });
+
+    // (2) 多種分隔符拆分:+ ＋ 、 , ， / ・ & 及 和 兼
     const parts = text.split(/[+＋、,，/・&]|\s*(?:及|和|兼)\s*/);
     let results = [];
 
@@ -1009,40 +1071,49 @@ function splitPersons(personStr, totalAmount) {
         part = part.trim();
         if (!part) continue;
 
-        let m;
-
-        // (A) 姓名$金額*N人 — 展開 N 筆（第 1 筆帶姓名，其餘留空給使用者補），避免另 N-1 人金額消失
-        m = part.match(/^(.+?)\s*\$\s*(\d+(?:\.\d+)?)\s*\*\s*(\d+)\s*人?$/);
-        if (m) {
-            const perAmt = parseFloat(m[2]);
-            const n = parseInt(m[3], 10) || 1;
-            results.push({ name: m[1].trim(), amount: perAmt });
-            for (let i = 1; i < n; i++) results.push({ name: '', amount: perAmt });
-            if (typeof addLog === 'function') addLog(`"${part}" 展開為 ${n} 筆（${n-1} 筆姓名留空待補）`);
+        // (A) 群組占位符 → 展開成多筆
+        if (part.startsWith('\u0000G') && groupMap[part]) {
+            const g = groupMap[part];
+            if (g.names.length > 0) {
+                g.names.forEach(nm => results.push({ name: nm, amount: g.perAmount }));
+                for (let i = g.names.length; i < g.count; i++) results.push({ name: '', amount: g.perAmount });
+            } else {
+                for (let i = 0; i < g.count; i++) results.push({ name: '', amount: g.perAmount });
+            }
+            if (typeof addLog === 'function') addLog(`"${g.names.join('、')}$${g.perAmount}*${g.count}人" 展開為 ${g.count} 筆`);
             continue;
         }
 
-        // (B) 姓名$金額 / 姓名 $ 金額
+        let m;
+
+        // (B) 姓名$金額
         m = part.match(/^(.+?)\s*\$\s*(\d+(?:\.\d+)?)$/);
         if (m) { results.push({ name: m[1].trim(), amount: parseFloat(m[2]) }); continue; }
 
-        // (C) 智慧：中文姓名後直接接數字（無 $）— "鍾宜珍157" / "鍾宜珍 157"
+        // (C) 中文姓名後直接接數字 — "鍾宜珍157"
         m = part.match(/^([\u4e00-\u9fff]{2,4})\s*(\d+(?:\.\d+)?)$/);
         if (m) { results.push({ name: m[1].trim(), amount: parseFloat(m[2]) }); continue; }
 
-        // (D) 智慧：數字開頭 + 姓名 — "157鍾宜珍"
+        // (D) 數字開頭 + 姓名 — "157鍾宜珍"
         m = part.match(/^(\d+(?:\.\d+)?)\s*([\u4e00-\u9fff]{2,4})$/);
         if (m) { results.push({ name: m[2].trim(), amount: parseFloat(m[1]) }); continue; }
 
-        // (E) 純數字（有金額但無姓名）— 姓名留空給使用者補
+        // (E) 純數字 — 姓名留空
         m = part.match(/^\$?\s*(\d+(?:\.\d+)?)$/);
         if (m) { results.push({ name: '', amount: parseFloat(m[1]) }); continue; }
 
-        // (F) 其他（純姓名或含噪音前後綴）— line 988 的 cleanPersonName 會再次清理
+        // (F) 純姓名或含噪音
         results.push({ name: part, amount: 0 });
     }
 
-    // 只有單一筆且無金額 → 把整個 totalAmount 歸給這一人
+    // 對每筆 name 做二次清理(去除殘留數字、非中文字)
+    results = results.map(r => {
+        if (!r.name) return r;
+        const cleaned = cleanPersonName(r.name);
+        return { name: cleaned || r.name, amount: r.amount };
+    });
+
+    // 單筆且無金額 → 整個 totalAmount 歸給這人
     if (results.length === 1 && results[0].amount === 0)
         return [{ name: results[0].name, amount: totalAmount }];
 
@@ -1062,18 +1133,27 @@ function splitPersons(personStr, totalAmount) {
 }
 
 // ===== splitPersons + _srcAmount 標記助手 =====
-// v6.6.4 三方金額把關（原始=明細=個人小計）：第一筆標記 _srcAmount = 原始金額，
-// 其餘 0；並修正任何浮點漂移，保證 sum(split.amount) === amount。
+// v6.6.4 三方金額把關(原始=明細=個人小計):第一筆標記 _srcAmount = 原始金額,其餘 0
+// v6.7.2 修:(1) 浮點校正只吃小差(≤1元),大差改 warn 不硬調,避免 -20、256 這類偽造
+//          (2) 校正後若任何筆為負值,還原並 warn
 function pushSplitRecords(records, base, person, amount) {
     const splits = splitPersons(person, amount);
     if (splits.length === 0) { records.push({ ...base, person: '', amount, _srcAmount: amount }); return; }
     const sum = splits.reduce((s, x) => s + x.amount, 0);
-    if (Math.abs(sum - amount) > 0.001) {
-        // 調整最後一筆以嚴格保留原始總額（避免浮點/除不盡產生漂移）
-        splits[splits.length - 1].amount += (amount - sum);
+    const diff = amount - sum;
+    if (Math.abs(diff) > 0.001) {
+        if (Math.abs(diff) <= 1) {
+            // 浮點漂移(如 276.666/3 餘 0.002)— 吃進最後一筆
+            splits[splits.length - 1].amount += diff;
+        } else if (typeof addLog === 'function') {
+            // 大差距(通常代表拆分錯誤)— 只 warn,不硬調(避免產生負值/奇數)
+            addLog(`拆分金額差 ${diff.toFixed(0)} 元:"${person}" 原始 ${amount} vs 拆分 ${sum.toFixed(0)}`);
+        }
     }
+    // 任何筆變負 → 復原為拆分出的原始金額(這筆金額較可疑,但至少不給使用者看到負值)
+    splits.forEach(sp => { if (sp.amount < 0) sp.amount = 0; });
     splits.forEach((sp, i) => {
-        records.push({ ...base, person: sp.name, amount: sp.amount, _srcAmount: i === 0 ? amount : 0 });
+        records.push({ ...base, person: sp.name, amount: sp.amount, _srcAmount: i === 0 ? amount : 0, _rawNote: base._rawNote || person || '' });
     });
 }
 
@@ -1360,7 +1440,7 @@ function extractTravelDetail(sheet, sheetName, fileLabel) {
         if (amount === 0) amount = safeFloat(row[4]);
         const note = String(row[noteCol] || '').trim();
         if (amount > 0 && currentOffice) {
-            pushSplitRecords(records, { office: currentOffice, sheet: sheetName, type: '差旅費', reason: note || sheetName }, person, amount);
+            pushSplitRecords(records, { office: currentOffice, sheet: sheetName, type: '差旅費', reason: note || sheetName, _rawNote: person + (note ? ` (備註:${note})` : ''), _sourceRow: r + 1 }, person, amount);
         }
     }
     return records;
@@ -1383,7 +1463,7 @@ function extractTravelTraffic(sheet, sheetName, fileLabel) {
         const note = String(row[7] || '').trim();
         if (amount > 0 && person) {
             const office = district && !district.includes('衛生所') ? district + '衛生所' : district;
-            pushSplitRecords(records, { office, sheet: sheetName, type: '差旅費', reason: note || sheetName }, person, amount);
+            pushSplitRecords(records, { office, sheet: sheetName, type: '差旅費', reason: note || sheetName, _rawNote: `${person} / ${district} / ${note || ''}`.trim(), _sourceRow: r + 1 }, person, amount);
         }
     }
     return records;
@@ -1418,12 +1498,9 @@ function extractTravelList(sheet, sheetName, fileLabel) {
         if (amount > 0 && officeRaw) {
             let office = officeRaw.replace(/^\d+\.?\s*/, '').trim() || officeRaw;
             if (!office.includes('衛生所') && office.includes('區')) office += '衛生所';
-            let person = '';
-            if (note) {
-                const m = note.match(/\d+\/\d+\s*(.+)/);
-                person = m ? m[1].trim() : note;
-            }
-            pushSplitRecords(records, { office, sheet: sheetName, type: '差旅費', reason: sheetName }, person, amount);
+            // v6.7.2:直接把整個 note 丟給 splitPersons(它會自己清日期+識別 N人 群組)
+            // _rawNote 保留原始 note,供 hover 追溯
+            pushSplitRecords(records, { office, sheet: sheetName, type: '差旅費', reason: note || sheetName, _rawNote: note, _sourceRow: r + 1 }, note, amount);
         }
     }
     return records;
@@ -1608,7 +1685,7 @@ function extractExpenseReportSheet(sheet, sheetName) {
                 if (person === 'X' || amountRaw === 'X') continue;
                 if (!person || amount <= 0) continue;
 
-                records.push({ office, person, amount, sheet: purpose || sheetName, type: feeType, reason: note || purpose, _srcAmount: amount });
+                records.push({ office, person, amount, sheet: purpose || sheetName, type: feeType, reason: note || purpose, _srcAmount: amount, _rawNote: `${office} ${person} ${amount} ${note || ''}`.trim(), _sourceRow: r + 1 });
             }
             if (records.length > 0) return records;
         }
@@ -1633,7 +1710,7 @@ function extractExpenseReportSheet(sheet, sheetName) {
                 const amount = safeFloat(drow[sAmountCol]);
                 if (!office || amount <= 0) continue;
                 if (!office.includes('衛生所') && !office.includes('區')) continue;
-                records.push({ office, person, amount, sheet: purpose || sheetName, type: feeType, reason: purpose, _srcAmount: amount });
+                records.push({ office, person, amount, sheet: purpose || sheetName, type: feeType, reason: purpose, _srcAmount: amount, _rawNote: `${office} ${person} ${amount}`.trim(), _sourceRow: dr + 1 });
             }
             if (records.length > 0) return records;
         }
@@ -1661,7 +1738,7 @@ function extractExpenseReportSheet(sheet, sheetName) {
         const amount = safeFloat(row[amountCol]);
         if (!zCode || !/^z\d{2}$/i.test(zCode)) continue;
         if (amount <= 0) continue;
-        records.push({ office, person: '', amount, sheet: purpose || sheetName, type: feeType, reason: purpose, _srcAmount: amount });
+        records.push({ office, person: '', amount, sheet: purpose || sheetName, type: feeType, reason: purpose, _srcAmount: amount, _rawNote: `z-code 彙總列:${zCode} ${office} ${amount} 元 (明細分散於其他分頁)`, _sourceRow: r + 1 });
     }
 
     return records;
@@ -1988,9 +2065,14 @@ function filterByOffice() {
 
     const officeHead = office ? '' : '<th>衛生所</th>';
     const colSpan = office ? 3 : 4;
-    let rows = records.map(r =>
-        `<tr>${office ? '' : `<td>${r.office}</td>`}<td>${r.sheet}</td><td>${r.type}</td><td>${r.person || '<span style="color:var(--ink-3)">–</span>'}</td><td class="num-cell">${r.amount.toLocaleString()}</td><td>${r.reason}</td></tr>`
-    ).join('');
+    // v6.7.2:每列加 data-src/title,滑鼠浮標顯示原始資料(從哪裡讀取拆解)
+    const esc = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    let rows = records.map(r => {
+        const raw = r._rawNote || r.reason || '';
+        const src = r._sourceRow ? `分頁「${r.sheet}」第 ${r.sourceRow || r._sourceRow} 列` : `分頁「${r.sheet}」`;
+        const hint = `原始資料來源:\n${src}\n\n原文:\n${raw}`;
+        return `<tr class="src-row" title="${esc(hint)}" data-src="${esc(raw)}">${office ? '' : `<td>${r.office}</td>`}<td>${r.sheet}</td><td>${r.type}</td><td>${r.person || '<span class="dash-soft">–</span>'}</td><td class="num-cell">${r.amount.toLocaleString()}</td><td>${r.reason}</td></tr>`;
+    }).join('');
     document.getElementById('officeTable').innerHTML = `
         <table><thead><tr>${officeHead}<th>分頁</th><th>類型</th><th>姓名</th><th class="num-col">金額</th><th>事由</th></tr></thead><tbody>
         ${rows}
