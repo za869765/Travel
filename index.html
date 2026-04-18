@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>差旅明細整理系統 v6.7.3</title>
+    <title>差旅明細整理系統 v6.7.4</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -24,7 +24,7 @@
             --accent-soft: oklch(0.95 0.02 255);
             --accent:      oklch(0.42 0.12 255);
             --accent-deep: oklch(0.32 0.10 255);
-            /* v6.7.3 多色 accent 家族:統計欄分色、更豐富視覺 */
+            /* v6.7.4 多色 accent 家族:統計欄分色、更豐富視覺 */
             --c-indigo:      oklch(0.42 0.14 265);
             --c-indigo-soft: oklch(0.94 0.03 265);
             --c-teal:        oklch(0.55 0.11 190);
@@ -652,7 +652,7 @@
         /* ===== Total金額強調 ===== */
         .stat-col:last-child .stat-value { color: var(--ink-7); }
 
-        /* ===== v6.7.3 華麗化色彩層 ===== */
+        /* ===== v6.7.4 華麗化色彩層 ===== */
 
         /* Header 漸層底 + 標題漸層文字 */
         .app-header {
@@ -910,7 +910,7 @@
     <header class="app-header">
         <div class="app-header-top">
             <h1>差旅明細整理系統</h1>
-            <span class="app-version">v6.7.3</span>
+            <span class="app-version">v6.7.4</span>
         </div>
         <div class="app-flow">
             會計室信件<span class="sep">›</span>旅費彙整表.xls<span class="sep">›</span>上傳<span class="sep">›</span>選衛生所<span class="sep">›</span>匯出 Excel
@@ -1080,7 +1080,7 @@ function applyRowStagger(containerEl, maxStagger = 20) {
 
 // ===== 衛生所代碼對照表 =====
 const OFFICE_CODE_MAP = {
-    'z01':'仁德區衛生所','z02':'歸仁鄉衛生所','z03':'關廟區衛生所','z04':'龍崎區衛生所',
+    'z01':'仁德區衛生所','z02':'歸仁區衛生所','z03':'關廟區衛生所','z04':'龍崎區衛生所',
     'z05':'永康區衛生所','z06':'新化區衛生所','z07':'善化區衛生所','z08':'新市區衛生所',
     'z09':'安定區衛生所','z10':'山上區衛生所','z11':'玉井區衛生所','z12':'楠西區衛生所',
     'z13':'南化區衛生所','z14':'左鎮區衛生所','z15':'麻豆區衛生所','z16':'下營區衛生所',
@@ -1107,6 +1107,10 @@ const OFFICE_CODE_REVERSE = {};
         OFFICE_ORDER[full] = idx;
         OFFICE_CODE_REVERSE[full] = code.toUpperCase();
     });
+    // v6.7.4 舊名正規化:2010 縣市合併前的舊鄉名 → 合併後的區名
+    // (目前已知只有 歸仁 源表還在用舊名「歸仁鄉」)
+    OFFICE_NAME_MAP['歸仁鄉衛生所'] = '歸仁區衛生所';
+    OFFICE_NAME_MAP['歸仁鄉']       = '歸仁區衛生所';
 })();
 
 function resolveOffice(name) {
@@ -1194,7 +1198,7 @@ function cleanPersonName(s) {
 
 function splitPersons(personStr, totalAmount) {
     if (!personStr || !personStr.trim()) return [{ name: '', amount: totalAmount }];
-    // v6.7.3 修:
+    // v6.7.4 修:
     //   (0) 清除日期片段避免 / 當分隔符誤拆 (例 "1/19" 被當成 + 造成「1」「19林秉蓁」)
     //   (1b) 先保護「姓名1、姓名2…$金額*N人」群組,避免 、/+ 把它拆散
     let text = personStr.trim();
@@ -1291,7 +1295,7 @@ function splitPersons(personStr, totalAmount) {
 
 // ===== splitPersons + _srcAmount 標記助手 =====
 // v6.6.4 三方金額把關(原始=明細=個人小計):第一筆標記 _srcAmount = 原始金額,其餘 0
-// v6.7.3 修:(1) 浮點校正只吃小差(≤1元),大差改 warn 不硬調,避免 -20、256 這類偽造
+// v6.7.4 修:(1) 浮點校正只吃小差(≤1元),大差改 warn 不硬調,避免 -20、256 這類偽造
 //          (2) 校正後若任何筆為負值,還原並 warn
 function pushSplitRecords(records, base, person, amount) {
     const splits = splitPersons(person, amount);
@@ -1655,7 +1659,7 @@ function extractTravelList(sheet, sheetName, fileLabel) {
         if (amount > 0 && officeRaw) {
             let office = officeRaw.replace(/^\d+\.?\s*/, '').trim() || officeRaw;
             if (!office.includes('衛生所') && office.includes('區')) office += '衛生所';
-            // v6.7.3:直接把整個 note 丟給 splitPersons(它會自己清日期+識別 N人 群組)
+            // v6.7.4:直接把整個 note 丟給 splitPersons(它會自己清日期+識別 N人 群組)
             // _rawNote 保留原始 note,供 hover 追溯
             pushSplitRecords(records, { office, sheet: sheetName, type: '差旅費', reason: note || sheetName, _rawNote: note, _sourceRow: r + 1 }, note, amount);
         }
@@ -2222,7 +2226,7 @@ function filterByOffice() {
 
     const officeHead = office ? '' : '<th>衛生所</th>';
     const colSpan = office ? 3 : 4;
-    // v6.7.3:每列加 data-src/title,滑鼠浮標顯示原始資料(從哪裡讀取拆解)
+    // v6.7.4:每列加 data-src/title,滑鼠浮標顯示原始資料(從哪裡讀取拆解)
     const esc = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     let rows = records.map(r => {
         const raw = r._rawNote || r.reason || '';
