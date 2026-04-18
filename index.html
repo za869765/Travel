@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>差旅明細整理系統 v6.7.0</title>
+    <title>差旅明細整理系統 v6.7.1</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -320,10 +320,8 @@
         }
         .stat-col:last-child { border-right: 0; }
         .stat-label {
-            font-size: 11px;
+            font-size: 12px;
             font-weight: 500;
-            letter-spacing: 0.06em;
-            text-transform: uppercase;
             color: var(--ink-4);
             margin-bottom: var(--sp-2);
         }
@@ -341,10 +339,8 @@
         .stat-col.fail .stat-value,
         .stat-col.fail .stat-label { color: var(--fail); }
         .stat-unit {
-            font-size: 11px;
-            font-weight: 500;
-            letter-spacing: 0.06em;
-            text-transform: uppercase;
+            font-size: 12px;
+            font-weight: 400;
             color: var(--ink-4);
         }
         @media (max-width: 768px) {
@@ -366,10 +362,8 @@
             flex-wrap: wrap;
         }
         .filter-bar label {
-            font-size: 11px;
+            font-size: 13px;
             font-weight: 500;
-            letter-spacing: 0.06em;
-            text-transform: uppercase;
             color: var(--ink-4);
         }
         .select {
@@ -422,10 +416,8 @@
             z-index: 1;
             background: var(--ink-0);
             padding: var(--sp-3) var(--sp-3);
-            font-size: 11px;
+            font-size: 13px;
             font-weight: 600;
-            letter-spacing: 0.06em;
-            text-transform: uppercase;
             color: var(--ink-6);
             text-align: left;
             border-bottom: 2px solid var(--ink-6);
@@ -543,6 +535,101 @@
         }
         .modal .btn-group { margin-top: 0; justify-content: flex-end; }
 
+        /* ===== Row stagger (tbody tr --i) ===== */
+        tbody tr {
+            animation: led-rise var(--dur-base) var(--ease-out) both;
+            animation-delay: calc(var(--i, 0) * 24ms);
+        }
+        tbody tr.just-shown {
+            animation: led-row-flash 900ms var(--ease-out);
+        }
+
+        /* ===== Tally underline (對帳通過,金額格下劃綠線) ===== */
+        .amount-ok {
+            position: relative;
+        }
+        .amount-ok::after {
+            content: "";
+            position: absolute;
+            left: var(--sp-3); right: var(--sp-3); bottom: 2px;
+            height: 1px;
+            background: var(--ok);
+            transform-origin: left;
+            animation: led-tally var(--dur-slow) var(--ease-out) calc(200ms + var(--i, 0) * 24ms) both;
+        }
+
+        /* ===== Log caret blink ===== */
+        .log-caret {
+            display: inline-block;
+            width: 6px;
+            height: 12px;
+            background: var(--accent);
+            vertical-align: text-bottom;
+            margin-left: 2px;
+            animation: led-blink 1s steps(1, end) infinite;
+        }
+        .log {
+            mask-image: linear-gradient(to bottom, transparent 0, black 24px);
+            -webkit-mask-image: linear-gradient(to bottom, transparent 0, black 24px);
+        }
+        .log-line {
+            animation: led-rise var(--dur-base) var(--ease-out) both;
+        }
+
+        /* ===== Warn/fail badge pulse ===== */
+        .badge-recon.warn,
+        .badge-recon.fail {
+            animation:
+                led-pop var(--dur-base) var(--ease-out) both,
+                led-pulse 1800ms var(--ease-in-out) 600ms 3;
+        }
+
+        /* ===== Count-up stat value — 數字滾動效果由 JS 觸發 ===== */
+        .stat-value { will-change: auto; }
+        .stat-col {
+            position: relative;
+            overflow: hidden;
+        }
+        .stat-col.counting::before {
+            content: "";
+            position: absolute;
+            top: 0; left: 0; right: 0; height: 100%;
+            background: linear-gradient(90deg, transparent 0%, var(--accent-soft) 50%, transparent 100%);
+            animation: led-scan 900ms var(--ease-out);
+            pointer-events: none;
+        }
+
+        /* ===== Accordion (fileInfo 展開用) ===== */
+        .file-expand {
+            display: grid;
+            grid-template-rows: 0fr;
+            transition: grid-template-rows var(--dur-base) var(--ease-emph);
+        }
+        .file-expand > div { overflow: hidden; }
+        .file-row.open + .file-expand { grid-template-rows: 1fr; }
+
+        /* ===== Person row grouping (同一人) ===== */
+        tbody tr.group-last td { border-bottom: 1px solid var(--ink-3); }
+        .dash-soft { color: var(--ink-3); }
+
+        /* ===== Section kicker accent (微強調,打破全黑白) ===== */
+        .section-header {
+            position: relative;
+        }
+        .section-header::before {
+            content: "";
+            position: absolute;
+            left: 0; top: 0; bottom: 0;
+            width: 3px;
+            background: var(--accent);
+            transform: scaleY(0);
+            transform-origin: top;
+            animation: led-tally var(--dur-slow) var(--ease-out) 200ms forwards;
+        }
+
+        /* ===== Total金額強調(不違反 ink-6 規則,靠粗細+大小) ===== */
+        .stat-col:last-child .stat-value { color: var(--ink-7); }
+
         /* ===== Keyframes ===== */
         @keyframes led-rise {
             from { opacity: 0; transform: translateY(6px); }
@@ -556,6 +643,10 @@
             60%  { opacity: 1; transform: scale(1.02); }
             100% { opacity: 1; transform: scale(1);    }
         }
+        @keyframes led-pulse {
+            0%, 100% { box-shadow: 0 0 0 0 currentColor; opacity: 1; }
+            50%      { box-shadow: 0 0 0 4px transparent; opacity: 0.65; }
+        }
         @keyframes led-shimmer {
             from { background-position: -200% 0; }
             to   { background-position:  200% 0; }
@@ -568,6 +659,23 @@
         @keyframes led-row-flash {
             0%   { background-color: var(--accent-soft); }
             100% { background-color: transparent; }
+        }
+        @keyframes led-tally {
+            from { transform: scaleX(0); }
+            to   { transform: scaleX(1); }
+        }
+        @keyframes led-blink {
+            0%, 49%   { opacity: 1; }
+            50%, 100% { opacity: 0; }
+        }
+        @keyframes led-scan {
+            0%   { opacity: 0; transform: translateX(-100%); }
+            20%  { opacity: 0.8; }
+            100% { opacity: 0; transform: translateX(100%); }
+        }
+        @keyframes led-expand {
+            from { grid-template-rows: 0fr; opacity: 0; }
+            to   { grid-template-rows: 1fr; opacity: 1; }
         }
 
         /* stagger */
@@ -602,12 +710,12 @@
     <header class="app-header">
         <div class="app-header-top">
             <h1>差旅明細整理系統</h1>
-            <span class="app-version">v6.7.0</span>
+            <span class="app-version">v6.7.1</span>
         </div>
         <div class="app-flow">
-            會計 mail<span class="sep">›</span>旅費彙整表.xls<span class="sep">›</span>上傳<span class="sep">›</span>選衛生所<span class="sep">›</span>匯出 Excel
+            會計室信件<span class="sep">›</span>旅費彙整表.xls<span class="sep">›</span>上傳<span class="sep">›</span>選衛生所<span class="sep">›</span>匯出 Excel
         </div>
-        <div class="app-disclaim">DISCLAIMER — 本工具僅供參考,請自行確認內容</div>
+        <div class="app-disclaim">免責聲明 — 本工具僅供參考，請自行確認內容</div>
     </header>
 
     <section class="section" id="uploadCard">
@@ -665,7 +773,7 @@
             </div>
             <div class="section-body">
                 <div class="filter-bar">
-                    <label>Office</label>
+                    <label>衛生所</label>
                     <select id="officeSelect" class="select" onchange="filterByOffice()">
                         <option value="">-- 全部衛生所 --</option>
                     </select>
@@ -711,7 +819,7 @@
         <h3>此檔案未偵測到可處理的差旅明細資料</h3>
         <div class="modal-file" id="modalFileName"></div>
         <div class="modal-causes">
-            <div style="margin-bottom:var(--sp-2);font-size:13px;color:var(--ink-4);letter-spacing:0.04em;text-transform:uppercase;">POSSIBLE CAUSES</div>
+            <div style="margin-bottom:var(--sp-2);font-size:13px;color:var(--ink-4);font-weight:500;">可能原因</div>
             <ul>
                 <li>檔案為空或無有效分頁</li>
                 <li>分頁格式不在已知 8 種之內</li>
@@ -728,6 +836,47 @@
 <script>
 // ===== 全域變數 =====
 let resultData = null;
+
+// ===== LiveNum count-up 模組 =====
+const LiveNum = (function(){
+    const ease = t => 1 - Math.pow(1-t, 3);
+    function countUp(el, target, opts){
+        if(!el) return;
+        const prefersReduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const dur = (opts && opts.duration) || 680;
+        const prefix = (opts && opts.prefix) || '';
+        const start = parseFloat(String(el.textContent || '').replace(/[,$%\s]/g,'')) || 0;
+        const tgt = Number(target) || 0;
+        if (prefersReduce || start === tgt) {
+            el.textContent = prefix + tgt.toLocaleString();
+            return;
+        }
+        const col = el.closest('.stat-col');
+        if (col) {
+            col.classList.add('counting');
+            setTimeout(() => col.classList.remove('counting'), 900);
+        }
+        const t0 = performance.now();
+        function step(now){
+            const t = Math.min(1, (now - t0) / dur);
+            const v = start + (tgt - start) * ease(t);
+            el.textContent = prefix + Math.round(v).toLocaleString();
+            if (t < 1) requestAnimationFrame(step);
+            else el.textContent = prefix + tgt.toLocaleString();
+        }
+        requestAnimationFrame(step);
+    }
+    return { countUp };
+})();
+
+// ===== 表格列 stagger 索引寫入 =====
+function applyRowStagger(containerEl, maxStagger = 20) {
+    if (!containerEl) return;
+    const rows = containerEl.querySelectorAll('tbody tr');
+    rows.forEach((tr, i) => {
+        tr.style.setProperty('--i', i < maxStagger ? i : maxStagger);
+    });
+}
 
 // ===== 衛生所代碼對照表 =====
 const OFFICE_CODE_MAP = {
@@ -1723,7 +1872,7 @@ function showResult() {
 
     const hasUnknown = r.unknownCount > 0;
     const unknownCol = hasUnknown
-        ? `<div class="stat-col fail"><div class="stat-label">Unknown</div><div class="stat-value">${r.unknownCount}</div><div class="stat-unit">no name</div></div>`
+        ? `<div class="stat-col fail"><div class="stat-label">無姓名</div><div class="stat-value">${r.unknownCount}</div><div class="stat-unit">需補</div></div>`
         : '';
 
     document.getElementById('resultSummary').innerHTML = `
@@ -1731,31 +1880,46 @@ function showResult() {
             <div class="stat-col">
                 <div class="stat-label">明細筆數</div>
                 <div class="stat-value">${r.allRecords.length}</div>
-                <div class="stat-unit">items</div>
+                <div class="stat-unit">筆</div>
             </div>
             <div class="stat-col">
                 <div class="stat-label">衛生所數</div>
                 <div class="stat-value">${r.offices.length}</div>
-                <div class="stat-unit">offices</div>
+                <div class="stat-unit">所</div>
             </div>
             <div class="stat-col">
                 <div class="stat-label">加班費筆數</div>
                 <div class="stat-value">${r.overtimeCount}</div>
-                <div class="stat-unit">overtime</div>
+                <div class="stat-unit">筆</div>
             </div>
             <div class="stat-col">
                 <div class="stat-label">不重複人員</div>
                 <div class="stat-value">${r.personCount}</div>
-                <div class="stat-unit">persons</div>
+                <div class="stat-unit">人</div>
             </div>
             <div class="stat-col">
                 <div class="stat-label">總金額</div>
                 <div class="stat-value">$${r.grandTotal.toLocaleString()}</div>
-                <div class="stat-unit">TWD</div>
+                <div class="stat-unit">元</div>
             </div>
             ${unknownCol}
         </div>
     `;
+
+    // count-up 動畫:所有 stat 主數字由 0 滾到目標
+    requestAnimationFrame(() => {
+        const cols = document.querySelectorAll('#resultSummary .stat-col');
+        const values = [r.allRecords.length, r.offices.length, r.overtimeCount, r.personCount, r.grandTotal];
+        const prefixes = ['', '', '', '', '$'];
+        if (hasUnknown) { values.push(r.unknownCount); prefixes.push(''); }
+        cols.forEach((col, i) => {
+            const vEl = col.querySelector('.stat-value');
+            if (vEl) {
+                vEl.textContent = prefixes[i] + '0';
+                setTimeout(() => LiveNum.countUp(vEl, values[i], { prefix: prefixes[i] }), 200 + i * 80);
+            }
+        });
+    });
 
     const sel = document.getElementById('officeSelect');
     sel.innerHTML = '<option value="">-- 全部衛生所 --</option>';
@@ -1830,7 +1994,8 @@ function filterByOffice() {
     document.getElementById('officeTable').innerHTML = `
         <table><thead><tr>${officeHead}<th>分頁</th><th>類型</th><th>姓名</th><th class="num-col">金額</th><th>事由</th></tr></thead><tbody>
         ${rows}
-        <tr class="grand-total"><td colspan="${colSpan}" style="text-align:right">合計</td><td class="num-cell">${total.toLocaleString()}</td><td></td></tr></tbody></table>`;
+        <tr class="grand-total"><td colspan="${colSpan}" style="text-align:right">合計</td><td class="num-cell${threeMatch ? ' amount-ok' : ''}">${total.toLocaleString()}</td><td></td></tr></tbody></table>`;
+    applyRowStagger(document.getElementById('officeTable'));
 
     // 個人小計
     renderPersonTable(office);
@@ -1862,8 +2027,8 @@ function renderPersonTable(filterOffice) {
         totalTravelCount += tc;
         // 對帳徽章:比對「明細」中此人加總 vs 個人小計 rowTotal
         const badge = p._unknown
-            ? `<span class="badge-recon warn"><span class="mark">▲</span>NO&nbsp;NAME</span>`
-            : `<span class="badge-recon ok"><span class="mark">●</span>OK</span>`;
+            ? `<span class="badge-recon warn"><span class="mark">▲</span>待補姓名</span>`
+            : `<span class="badge-recon ok"><span class="mark">●</span>通過</span>`;
         return `<tr>${filterOffice ? '' : `<td>${p.office}</td>`}<td>${p.person || '<span style="color:var(--ink-3)">–</span>'}</td><td class="num-cell">${tc || '<span style="color:var(--ink-3)">–</span>'}</td>${cells}<td class="num-cell">${rowTotal.toLocaleString()}</td><td>${badge}</td></tr>`;
     }).join('');
 
@@ -1873,7 +2038,24 @@ function renderPersonTable(filterOffice) {
     document.getElementById('personDetail').innerHTML = `
         <table><thead><tr>${officeHead}<th>姓名</th><th class="num-col">差旅單</th>${feeTypes.map(t => `<th class="num-col">${t}</th>`).join('')}<th class="num-col">總計</th><th>對帳</th></tr></thead><tbody>
         ${prows}
-        <tr class="grand-total">${filterOffice ? '' : '<td></td>'}<td>總計 (${data.length} 人)</td><td class="num-cell">${totalTravelCount}</td>${gtCells}<td class="num-cell">${grandTotal.toLocaleString()}</td><td></td></tr></tbody></table>`;
+        <tr class="grand-total">${filterOffice ? '' : '<td></td>'}<td>總計 (${data.length} 人)</td><td class="num-cell">${totalTravelCount}</td>${gtCells}<td class="num-cell amount-ok">${grandTotal.toLocaleString()}</td><td></td></tr></tbody></table>`;
+    applyRowStagger(document.getElementById('personDetail'));
+
+    // 衛生所分組:最後一列加底線區隔(只在全部檢視時有意義)
+    if (!filterOffice) {
+        const rows = document.querySelectorAll('#personDetail tbody tr');
+        let prevOffice = '';
+        rows.forEach((tr, idx) => {
+            const cell = tr.querySelector('td');
+            if (!cell) return;
+            const curOffice = cell.textContent.trim();
+            if (prevOffice && curOffice !== prevOffice && !tr.classList.contains('grand-total')) {
+                const prevTr = rows[idx - 1];
+                if (prevTr && !prevTr.classList.contains('grand-total')) prevTr.classList.add('group-last');
+            }
+            prevOffice = curOffice;
+        });
+    }
 }
 
 // ===== 下載 Excel =====
