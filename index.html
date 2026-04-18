@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>差旅明細整理系統 v6.7.2</title>
+    <title>差旅明細整理系統 v6.7.3</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -20,10 +20,32 @@
             --ink-5: oklch(0.42  0.007 240);
             --ink-6: oklch(0.25  0.008 240);
             --ink-7: oklch(0.15  0.01  240);
-            /* accent — Inkwell Blue */
+            /* accent — Inkwell Blue 主色 */
             --accent-soft: oklch(0.95 0.02 255);
             --accent:      oklch(0.42 0.12 255);
             --accent-deep: oklch(0.32 0.10 255);
+            /* v6.7.3 多色 accent 家族:統計欄分色、更豐富視覺 */
+            --c-indigo:      oklch(0.42 0.14 265);
+            --c-indigo-soft: oklch(0.94 0.03 265);
+            --c-teal:        oklch(0.55 0.11 190);
+            --c-teal-soft:   oklch(0.94 0.04 190);
+            --c-violet:      oklch(0.48 0.14 300);
+            --c-violet-soft: oklch(0.94 0.04 300);
+            --c-amber:       oklch(0.65 0.14 75);
+            --c-amber-soft:  oklch(0.96 0.05 75);
+            --c-rose:        oklch(0.55 0.16 15);
+            --c-rose-soft:   oklch(0.96 0.04 15);
+            /* 漸層面組合 */
+            --grad-head:   linear-gradient(135deg, var(--c-indigo-soft) 0%, var(--c-violet-soft) 70%, transparent 100%);
+            --grad-title:  linear-gradient(135deg, var(--c-indigo) 0%, var(--c-violet) 100%);
+            --grad-total:  linear-gradient(135deg, var(--accent-soft) 0%, var(--c-violet-soft) 100%);
+            --grad-btn:    linear-gradient(135deg, var(--accent) 0%, var(--c-violet) 100%);
+            --grad-btn-hover: linear-gradient(135deg, var(--accent-deep) 0%, oklch(0.38 0.14 300) 100%);
+            --grad-ok:     linear-gradient(135deg, var(--c-teal-soft) 0%, var(--ok-soft) 100%);
+            /* 卡片陰影 */
+            --sh-1: 0 1px 2px oklch(0.3 0.05 255 / 0.06), 0 0 0 1px oklch(0.3 0.05 255 / 0.03);
+            --sh-2: 0 4px 12px oklch(0.3 0.05 255 / 0.08), 0 0 0 1px oklch(0.3 0.05 255 / 0.05);
+            --sh-3: 0 8px 28px oklch(0.3 0.05 255 / 0.12);
             /* semantic — 對帳三態 */
             --ok:        oklch(0.52 0.12 155);
             --warn:      oklch(0.65 0.14 75);
@@ -630,47 +652,182 @@
         /* ===== Total金額強調 ===== */
         .stat-col:last-child .stat-value { color: var(--ink-7); }
 
-        /* ===== v6.7.2 補色彩 ===== */
-        /* stat 最後一欄(總計)加 accent-soft 底色 + 左 3px accent 條 */
-        .stat-col:last-child {
-            background: linear-gradient(180deg, var(--accent-soft) 0%, transparent 100%);
+        /* ===== v6.7.3 華麗化色彩層 ===== */
+
+        /* Header 漸層底 + 標題漸層文字 */
+        .app-header {
+            background: var(--grad-head);
+            padding: var(--sp-7) var(--sp-5) var(--sp-5);
+            margin-left: calc(-1 * var(--sp-5));
+            margin-right: calc(-1 * var(--sp-5));
+            border-bottom: 2px solid transparent;
+            border-image: linear-gradient(90deg, var(--c-indigo) 0%, var(--c-violet) 50%, transparent 100%) 1;
             position: relative;
+        }
+        .app-header::before {
+            content: "";
+            position: absolute;
+            left: 0; right: 0; top: 0; height: 3px;
+            background: linear-gradient(90deg, var(--c-indigo) 0%, var(--accent) 30%, var(--c-violet) 60%, var(--c-teal) 100%);
+        }
+        .app-header h1 {
+            background: var(--grad-title);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            -webkit-text-fill-color: transparent;
+        }
+
+        /* Section card 加 shadow + hover 微浮起 */
+        .section {
+            box-shadow: var(--sh-1);
+            transition: box-shadow var(--dur-base) var(--ease-out), transform var(--dur-base) var(--ease-out);
+        }
+        .section:hover { box-shadow: var(--sh-2); }
+
+        /* Section header 淡藍 gradient 底 */
+        .section-header {
+            background: linear-gradient(90deg, var(--c-indigo-soft) 0%, transparent 60%);
+        }
+        .section-index {
+            background: var(--grad-title);
+            color: var(--ink-0);
+            padding: 2px 8px;
+            border-radius: var(--r-1);
+            font-weight: 600;
+            letter-spacing: 0.02em;
+        }
+
+        /* Table thead 加 accent-soft 底色 + 底部 accent 線 */
+        thead th {
+            background: linear-gradient(180deg, var(--c-indigo-soft) 0%, var(--accent-soft) 100%);
+            border-bottom: 2px solid var(--accent) !important;
+            color: var(--ink-7) !important;
+            font-weight: 600;
+        }
+
+        /* Grand total 列亮底 + 邊條 */
+        tbody tr.grand-total td {
+            background: var(--grad-total) !important;
+            border-top: 2px solid var(--accent) !important;
+            font-weight: 600;
+            color: var(--ink-7);
+        }
+
+        /* Stat 欄依順序分色 (筆/所/人/金額/待補),最後一欄總計用漸層 title */
+        .stat-col:nth-child(1) .stat-value { color: var(--c-indigo); }
+        .stat-col:nth-child(2) .stat-value { color: var(--c-teal); }
+        .stat-col:nth-child(3) .stat-value { color: var(--c-violet); }
+        .stat-col:nth-child(4) .stat-value { color: var(--accent); }
+        .stat-bar.has-unknown .stat-col:nth-child(5) .stat-value { color: var(--c-amber); }
+        .stat-col:nth-child(1) { background: linear-gradient(180deg, var(--c-indigo-soft) 0%, transparent 70%); }
+        .stat-col:nth-child(2) { background: linear-gradient(180deg, var(--c-teal-soft) 0%, transparent 70%); }
+        .stat-col:nth-child(3) { background: linear-gradient(180deg, var(--c-violet-soft) 0%, transparent 70%); }
+        .stat-col:nth-child(4) { background: linear-gradient(180deg, var(--accent-soft) 0%, transparent 70%); }
+        .stat-bar.has-unknown .stat-col:nth-child(5) { background: linear-gradient(180deg, var(--c-amber-soft) 0%, transparent 70%); }
+        .stat-col:last-child {
+            background: var(--grad-total) !important;
+            position: relative;
+        }
+        .stat-col:last-child .stat-value {
+            background: var(--grad-title);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent !important;
+            -webkit-text-fill-color: transparent;
         }
         .stat-col:last-child::after {
             content: "";
             position: absolute;
-            left: 0; top: 20%; bottom: 20%;
+            left: 0; top: 10%; bottom: 10%;
             width: 3px;
-            background: var(--accent);
+            background: var(--grad-title);
             border-radius: 0 var(--r-1) var(--r-1) 0;
         }
-        /* app-header 加淡藍 bg gradient */
-        .app-header {
-            background: linear-gradient(180deg, var(--accent-soft) 0%, transparent 60%);
-            padding-left: var(--sp-4);
-            padding-right: var(--sp-4);
-            margin-left: calc(-1 * var(--sp-4));
-            margin-right: calc(-1 * var(--sp-4));
+
+        /* 按鈕主色漸層 + hover 更深 */
+        .btn-primary {
+            background: var(--grad-btn) !important;
+            box-shadow: 0 2px 6px oklch(0.42 0.12 255 / 0.25);
         }
+        .btn-primary:hover {
+            background: var(--grad-btn-hover) !important;
+            box-shadow: 0 4px 12px oklch(0.42 0.12 255 / 0.35);
+            transform: translateY(-1px);
+        }
+
+        /* Dropzone hover 漸層底 */
+        .dropzone:hover {
+            background: var(--grad-head);
+            border-color: var(--c-violet);
+            box-shadow: var(--sh-2);
+        }
+        .dropzone.dragover {
+            background: var(--grad-head);
+            border-color: var(--c-indigo);
+            box-shadow: var(--sh-3);
+        }
+
         /* 明細列 hover 提示可查原始資料 */
         tbody tr.src-row { cursor: help; transition: background var(--dur-fast) var(--ease-out); }
-        tbody tr.src-row:hover td { background: var(--accent-soft); }
+        tbody tr.src-row:hover td { background: var(--c-indigo-soft); }
         tbody tr.src-row:hover td:first-child {
-            box-shadow: inset 3px 0 0 var(--accent);
+            box-shadow: inset 3px 0 0 var(--c-violet);
         }
-        /* badge-recon.ok 飽和度微調,通過更明顯 */
+
+        /* Badge 華麗化 */
         .badge-recon.ok {
-            background: var(--ok-soft);
+            background: var(--grad-ok);
             color: var(--ok);
+            box-shadow: 0 0 0 1px var(--ok) inset;
         }
         .badge-recon.warn {
-            background: var(--warn-soft);
+            background: linear-gradient(135deg, var(--warn-soft) 0%, var(--c-amber-soft) 100%);
             color: oklch(0.45 0.14 75);
+            box-shadow: 0 0 0 1px var(--warn) inset;
         }
-        /* filter-bar 選定區微亮 */
+        .badge-recon.fail {
+            background: linear-gradient(135deg, var(--fail-soft) 0%, var(--c-rose-soft) 100%);
+            color: var(--fail);
+            box-shadow: 0 0 0 1px var(--fail) inset;
+        }
+
+        /* selected-info 加左 accent 條 + 漸層底 */
         .selected-info {
-            background: linear-gradient(90deg, var(--accent-soft) 0%, transparent 40%);
-            border-left: 3px solid var(--accent);
+            background: linear-gradient(90deg, var(--c-indigo-soft) 0%, var(--accent-soft) 30%, transparent 70%);
+            border-left: 4px solid transparent;
+            border-image: var(--grad-title) 1;
+            border-image-slice: 1;
+            padding: var(--sp-3) var(--sp-4);
+            border-radius: var(--r-1);
+            box-shadow: var(--sh-1);
+        }
+
+        /* Progress bar 多彩 */
+        .progress-fill {
+            background:
+                linear-gradient(90deg,
+                    var(--c-indigo) 0%,
+                    var(--accent) 30%,
+                    var(--c-violet) 60%,
+                    var(--c-teal) 100%) !important;
+        }
+
+        /* App version 徽章化 */
+        .app-version {
+            background: var(--ink-0);
+            padding: 3px 8px;
+            border-radius: var(--r-1);
+            border: 1px solid var(--ink-2);
+            box-shadow: var(--sh-1);
+            color: var(--c-indigo);
+            font-weight: 600;
+        }
+
+        /* 金額 OK 通過的 amount-ok 強化色彩 */
+        .num-cell.amount-ok {
+            color: var(--ok);
+            font-weight: 600;
         }
 
         /* ===== Keyframes ===== */
@@ -753,7 +910,7 @@
     <header class="app-header">
         <div class="app-header-top">
             <h1>差旅明細整理系統</h1>
-            <span class="app-version">v6.7.2</span>
+            <span class="app-version">v6.7.3</span>
         </div>
         <div class="app-flow">
             會計室信件<span class="sep">›</span>旅費彙整表.xls<span class="sep">›</span>上傳<span class="sep">›</span>選衛生所<span class="sep">›</span>匯出 Excel
@@ -1037,7 +1194,7 @@ function cleanPersonName(s) {
 
 function splitPersons(personStr, totalAmount) {
     if (!personStr || !personStr.trim()) return [{ name: '', amount: totalAmount }];
-    // v6.7.2 修:
+    // v6.7.3 修:
     //   (0) 清除日期片段避免 / 當分隔符誤拆 (例 "1/19" 被當成 + 造成「1」「19林秉蓁」)
     //   (1b) 先保護「姓名1、姓名2…$金額*N人」群組,避免 、/+ 把它拆散
     let text = personStr.trim();
@@ -1134,7 +1291,7 @@ function splitPersons(personStr, totalAmount) {
 
 // ===== splitPersons + _srcAmount 標記助手 =====
 // v6.6.4 三方金額把關(原始=明細=個人小計):第一筆標記 _srcAmount = 原始金額,其餘 0
-// v6.7.2 修:(1) 浮點校正只吃小差(≤1元),大差改 warn 不硬調,避免 -20、256 這類偽造
+// v6.7.3 修:(1) 浮點校正只吃小差(≤1元),大差改 warn 不硬調,避免 -20、256 這類偽造
 //          (2) 校正後若任何筆為負值,還原並 warn
 function pushSplitRecords(records, base, person, amount) {
     const splits = splitPersons(person, amount);
@@ -1498,7 +1655,7 @@ function extractTravelList(sheet, sheetName, fileLabel) {
         if (amount > 0 && officeRaw) {
             let office = officeRaw.replace(/^\d+\.?\s*/, '').trim() || officeRaw;
             if (!office.includes('衛生所') && office.includes('區')) office += '衛生所';
-            // v6.7.2:直接把整個 note 丟給 splitPersons(它會自己清日期+識別 N人 群組)
+            // v6.7.3:直接把整個 note 丟給 splitPersons(它會自己清日期+識別 N人 群組)
             // _rawNote 保留原始 note,供 hover 追溯
             pushSplitRecords(records, { office, sheet: sheetName, type: '差旅費', reason: note || sheetName, _rawNote: note, _sourceRow: r + 1 }, note, amount);
         }
@@ -2065,7 +2222,7 @@ function filterByOffice() {
 
     const officeHead = office ? '' : '<th>衛生所</th>';
     const colSpan = office ? 3 : 4;
-    // v6.7.2:每列加 data-src/title,滑鼠浮標顯示原始資料(從哪裡讀取拆解)
+    // v6.7.3:每列加 data-src/title,滑鼠浮標顯示原始資料(從哪裡讀取拆解)
     const esc = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     let rows = records.map(r => {
         const raw = r._rawNote || r.reason || '';
