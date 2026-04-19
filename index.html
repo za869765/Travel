@@ -2376,11 +2376,25 @@ function filterByOffice() {
     //   詳見 .src-tip / .src-mark-name CSS 與 setupSrcTip() 委派 listener。
     const esc = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     const escAttr = s => esc(s).replace(/'/g, '&#39;');
+    // v6.7.5: 事由欄若含多人分隔符（+、，、$數字），把本列姓名高亮（同 tooltip 配色）
+    const highlightReason = (reason, person) => {
+        const escReason = esc(reason);
+        const nm = String(person || '').trim();
+        if (!nm) return escReason;
+        // 觸發條件：有 + / 、 / ，或 $數字（拆分語法），否則維持原樣（避免單名本身也被標）
+        if (!/[+＋、,，]|\$\d/.test(String(reason))) return escReason;
+        if (!String(reason).includes(nm)) return escReason;
+        const pattern = nm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        try {
+            return escReason.replace(new RegExp(pattern, 'g'),
+                m => `<mark class="src-mark-name">${m}</mark>`);
+        } catch(_e) { return escReason; }
+    };
     let rows = records.map(r => {
         const raw = r._rawNote || r.reason || '';
         const src = r._sourceRow ? `分頁「${r.sheet}」第 ${r.sourceRow || r._sourceRow} 列` : `分頁「${r.sheet}」`;
         const personForHl = (r.person || '').trim();
-        return `<tr class="src-row" data-tip-src="${escAttr(src)}" data-tip-raw="${escAttr(raw)}" data-tip-name="${escAttr(personForHl)}">${office ? '' : `<td>${r.office}</td>`}<td>${r.sheet}</td><td>${r.type}</td><td>${r.person || '<span class="dash-soft">–</span>'}</td><td class="num-cell">${r.amount.toLocaleString()}</td><td>${r.reason}</td></tr>`;
+        return `<tr class="src-row" data-tip-src="${escAttr(src)}" data-tip-raw="${escAttr(raw)}" data-tip-name="${escAttr(personForHl)}">${office ? '' : `<td>${r.office}</td>`}<td>${r.sheet}</td><td>${r.type}</td><td>${r.person || '<span class="dash-soft">–</span>'}</td><td class="num-cell">${r.amount.toLocaleString()}</td><td>${highlightReason(r.reason, personForHl)}</td></tr>`;
     }).join('');
     document.getElementById('officeTable').innerHTML = `
         <table><thead><tr>${officeHead}<th>分頁</th><th>類型</th><th>姓名</th><th class="num-col">金額</th><th>事由</th></tr></thead><tbody>
