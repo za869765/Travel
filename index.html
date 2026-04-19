@@ -77,6 +77,26 @@
             --ease-emph:   cubic-bezier(0.2,  0, 0,    1);
         }
 
+        /* v6.7.5 bug #36：oklch fallback — Safari<15.4 / Chrome<111 / Firefox<113 */
+        /* 舊企業用戶（衛生所 Win7 + 舊瀏覽器）沒有 @supports 前面整組 var 變空字串，統計卡全破版 */
+        @supports not (color: oklch(0 0 0)) {
+            :root {
+                --ink-0: #fcfcfd; --ink-1: #f6f7f8; --ink-2: #e8eaed; --ink-3: #c8ccd0;
+                --ink-4: #8e949a; --ink-5: #5b6066; --ink-6: #3a3e43; --ink-7: #1f2327;
+                --accent-soft: #e8edf8; --accent: #3b63c1; --accent-deep: #2a4a99;
+                --c-indigo: #4a56b8;  --c-indigo-soft: #e6e8f3;
+                --c-teal:   #2f8a8f;  --c-teal-soft:   #e0f0f0;
+                --c-violet: #5f4aa8;  --c-violet-soft: #ebe5f3;
+                --c-amber:  #c07a1a;  --c-amber-soft:  #f7edd7;
+                --c-rose:   #c24a4e;  --c-rose-soft:   #f5e0e1;
+                --ok: #2d8a50; --warn: #c07a1a; --fail: #c0392b;
+                --ok-soft: #e5f2eb; --warn-soft: #f7edd7; --fail-soft: #f5e0de;
+                --sh-1: 0 1px 2px rgba(30,40,60,.06), 0 0 0 1px rgba(30,40,60,.03);
+                --sh-2: 0 4px 12px rgba(30,40,60,.08), 0 0 0 1px rgba(30,40,60,.05);
+                --sh-3: 0 8px 28px rgba(30,40,60,.12);
+            }
+        }
+
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: var(--font-ui);
@@ -775,6 +795,43 @@
             box-shadow: inset 3px 0 0 var(--c-violet);
         }
 
+        /* v6.7.5: custom tooltip — hover 顯示原文且把對應姓名以對比色高亮 */
+        .src-tip {
+            position: fixed;
+            z-index: 9999;
+            max-width: 420px;
+            padding: 10px 14px;
+            background: var(--ink-7);
+            color: var(--ink-0);
+            border-radius: var(--r-2);
+            box-shadow: var(--sh-3);
+            font-family: var(--font-ui);
+            font-size: 13px;
+            line-height: 1.55;
+            pointer-events: none;
+            opacity: 0;
+            transform: translateY(2px);
+            transition: opacity var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out);
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+        .src-tip.show { opacity: 1; transform: translateY(0); }
+        .src-tip .src-tip-src {
+            color: var(--c-amber-soft);
+            font-size: 11px;
+            letter-spacing: .04em;
+            margin-bottom: 6px;
+            opacity: .85;
+        }
+        .src-tip .src-tip-raw { color: var(--ink-1); }
+        .src-tip mark.src-mark-name {
+            background: var(--c-amber);
+            color: var(--ink-7);
+            padding: 0 4px;
+            border-radius: 3px;
+            font-weight: 600;
+        }
+
         /* Badge 華麗化 */
         .badge-recon.ok {
             background: var(--grad-ok);
@@ -1037,6 +1094,73 @@
 // ===== 全域變數 =====
 let resultData = null;
 
+// ===== v6.7.5: 明細列 hover tooltip — 高亮對應姓名於原文中 =====
+(function setupSrcTip(){
+    let tipEl = null;
+    function ensureTip(){
+        if (tipEl) return tipEl;
+        tipEl = document.createElement('div');
+        tipEl.className = 'src-tip';
+        tipEl.innerHTML = '<div class="src-tip-src"></div><div class="src-tip-raw"></div>';
+        document.body.appendChild(tipEl);
+        return tipEl;
+    }
+    const escHtml = s => String(s || '')
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+        .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    function highlightName(raw, name){
+        const safeRaw = escHtml(raw);
+        if (!name) return safeRaw;
+        // 用 escape regex special chars 後做全域 replace；姓名 2~4 字一般無正則特殊字元，保險還是 escape。
+        const pattern = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        try {
+            return safeRaw.replace(new RegExp(pattern, 'g'),
+                m => `<mark class="src-mark-name">${escHtml(m)}</mark>`);
+        } catch(_e){ return safeRaw; }
+    }
+    function position(ev){
+        if (!tipEl) return;
+        const pad = 14;
+        const w = tipEl.offsetWidth, h = tipEl.offsetHeight;
+        let x = ev.clientX + pad;
+        let y = ev.clientY + pad;
+        if (x + w > window.innerWidth - 8) x = ev.clientX - w - pad;
+        if (y + h > window.innerHeight - 8) y = ev.clientY - h - pad;
+        if (x < 4) x = 4;
+        if (y < 4) y = 4;
+        tipEl.style.left = x + 'px';
+        tipEl.style.top  = y + 'px';
+    }
+    document.addEventListener('mouseover', (ev) => {
+        const tr = ev.target.closest('tr.src-row');
+        if (!tr) return;
+        const src  = tr.getAttribute('data-tip-src') || '';
+        const raw  = tr.getAttribute('data-tip-raw') || '';
+        const name = tr.getAttribute('data-tip-name') || '';
+        if (!raw && !src) return;
+        const tip = ensureTip();
+        tip.querySelector('.src-tip-src').textContent = src ? `原始來源　${src}` : '';
+        tip.querySelector('.src-tip-raw').innerHTML = highlightName(raw, name);
+        tip.classList.add('show');
+        position(ev);
+    });
+    document.addEventListener('mousemove', (ev) => {
+        if (!tipEl || !tipEl.classList.contains('show')) return;
+        const tr = ev.target.closest('tr.src-row');
+        if (!tr) { tipEl.classList.remove('show'); return; }
+        position(ev);
+    });
+    document.addEventListener('mouseout', (ev) => {
+        if (!tipEl) return;
+        const tr = ev.target.closest('tr.src-row');
+        const next = ev.relatedTarget && ev.relatedTarget.closest && ev.relatedTarget.closest('tr.src-row');
+        if (tr && next === tr) return;
+        tipEl.classList.remove('show');
+    });
+    // 滾動時隱藏
+    window.addEventListener('scroll', () => { if (tipEl) tipEl.classList.remove('show'); }, { passive: true });
+})();
+
 // ===== LiveNum count-up 模組 =====
 const LiveNum = (function(){
     const ease = t => 1 - Math.pow(1-t, 3);
@@ -1190,8 +1314,12 @@ function extractFileTitle(filename) {
 // ===== 姓名拆分 =====
 function cleanPersonName(s) {
     if (!s) return '';
-    s = s.trim();
-    // 提取純中文姓名（2~4字中文）
+    // v6.7.5 bug #15：先洗掉 \s / 全形空白 U+3000 / NBSP U+00A0 / 全形字母數字 等干擾字元
+    // 舊版遇到「王　小明」(全形空白) 只會抓到「小明」，丟失「王」，對帳人頭錯位
+    s = String(s).replace(/[\s\u3000\u00a0]+/g, '').trim();
+    // 再剝除常見雜訊（OCR 附加的 🌐 前綴、英數、括號備註）
+    s = s.replace(/^[🌐\(（\[]+/, '').replace(/[\)）\]]+$/, '');
+    // 提取第一段 2~4 字連續中文作姓名
     const m = s.match(/([\u4e00-\u9fff]{2,4})/);
     return m ? m[1] : '';
 }
@@ -1204,7 +1332,9 @@ function splitPersons(personStr, totalAmount) {
     let text = personStr.trim();
 
     // (0) 清除日期片段 — 2026/3/4、1/12、46086(Excel序號) 不屬姓名
-    text = text.replace(/\b\d{4}\/\d{1,2}\/\d{1,2}\b/g, ' ');
+    // v6.7.5 bug #38：增加 3 位民國年（如 114/3/5、115.1.20）；含 . 分隔符變體
+    text = text.replace(/\b\d{4}[\/.]\d{1,2}[\/.]\d{1,2}\b/g, ' ');
+    text = text.replace(/(?<!\d)\d{3}[\/.]\d{1,2}[\/.]\d{1,2}(?!\d)/g, ' ');
     text = text.replace(/(?<!\d)\d{1,2}\/\d{1,2}(?!\d)/g, ' ');
 
     // (1) 正規化金額:千分位 , 與 "元" 字
@@ -1523,7 +1653,8 @@ function extractOvertimeDetail(sheet, sheetName, fileLabel) {
         if (amount === 0) amount = safeFloat(row[4]);
         const note = String(row[noteCol] || '').trim();
         if (amount > 0 && currentOffice) {
-            pushSplitRecords(records, { office: currentOffice, sheet: sheetName, type: '加班費', reason: note || sheetName }, person, amount);
+            // v6.7.5 bug #35：補 _rawNote / _sourceRow 讓 hover 能追溯原始
+            pushSplitRecords(records, { office: currentOffice, sheet: sheetName, type: '加班費', reason: note || sheetName, _rawNote: person + (note ? ` (備註:${note})` : ''), _sourceRow: r + 1 }, person, amount);
         }
     }
     return records;
@@ -1565,9 +1696,10 @@ function extractOvertimeSummary(sheet, sheetName, fileLabel) {
         const person = personCol >= 0 ? String(row[personCol] || '').trim() : '';
         if (amount > 0 && office && isValidOffice(office)) {
             if (person) {
-                pushSplitRecords(records, { office, sheet: sheetName, type: feeType, reason: purpose }, person, amount);
+                // v6.7.5 bug #35：Summary 也要附 _rawNote / _sourceRow
+                pushSplitRecords(records, { office, sheet: sheetName, type: feeType, reason: purpose, _rawNote: person, _sourceRow: r + 1 }, person, amount);
             } else {
-                records.push({ office, person: '', amount, sheet: sheetName, type: feeType, reason: purpose, _srcAmount: amount });
+                records.push({ office, person: '', amount, sheet: sheetName, type: feeType, reason: purpose, _srcAmount: amount, _rawNote: `(${office})`, _sourceRow: r + 1 });
             }
         }
     }
@@ -1686,12 +1818,24 @@ function extractVoucherDetail(sheet, sheetName, fileLabel) {
         }
     }
 
-    // 從彙總表標題取得衛生所或用途資訊
+    // v6.7.5 bug #37：從 sheetName / 標題列推測真實衛生所，不再統一寫死 '(傳票明細)'
+    //   - 先從 sheetName 找衛生所關鍵字（如「佳里衛生所傳票」）
+    //   - 退回標題區（前 8 列）第一個含「衛生所」或「區」的字串
     let purpose = sheetName;
+    let office = '';
+    const offKey = String(sheetName).replace(/\s/g, '');
+    const offMatch = offKey.match(/([\u4e00-\u9fff]{1,4}區|[\u4e00-\u9fff]{1,4}衛生所)/);
+    if (offMatch) office = offMatch[1];
     for (let r = 0; r < Math.min(nrows, 8); r++) {
         const t = getRow(sheet, r).join('');
+        if (!office) {
+            const m = t.replace(/\s/g, '').match(/([\u4e00-\u9fff]{1,4}區|[\u4e00-\u9fff]{1,4}衛生所)/);
+            if (m) office = m[1];
+        }
         if (t.includes('明細表')) { purpose = t.replace(/\s/g, '').match(/[^表]+明細表/)?.[0] || sheetName; break; }
     }
+    if (office && !office.includes('衛生所')) office += '衛生所';
+    if (!office) office = '(傳票明細)';
 
     for (let r = startRow; r < nrows; r++) {
         const row = getRow(sheet, r);
@@ -1701,7 +1845,8 @@ function extractVoucherDetail(sheet, sheetName, fileLabel) {
         // 只取小計欄有值的行（每人小計）
         const amount = safeFloat(row[subtotalCol]);
         if (amount > 0) {
-            records.push({ office: '(傳票明細)', person, amount, sheet: sheetName, type: '差旅費', reason: purpose, _srcAmount: amount });
+            // v6.7.5 bug #16：改用 pushSplitRecords，合併姓名儲存格會正確拆分
+            pushSplitRecords(records, { office, sheet: sheetName, type: '差旅費', reason: purpose, _rawNote: person, _sourceRow: r + 1 }, person, amount);
         }
     }
     return records;
@@ -2226,13 +2371,16 @@ function filterByOffice() {
 
     const officeHead = office ? '' : '<th>衛生所</th>';
     const colSpan = office ? 3 : 4;
-    // v6.7.4:每列加 data-src/title,滑鼠浮標顯示原始資料(從哪裡讀取拆解)
+    // v6.7.5: hover 改用 custom tooltip（不再用 native title），原文中對應「本列姓名」用 <mark> 高亮。
+    //   舉例：本列姓名=鄭小明，原文「鄭小明123+鄭捷克78」→ tooltip 內「鄭小明」被高亮，方便對照。
+    //   詳見 .src-tip / .src-mark-name CSS 與 setupSrcTip() 委派 listener。
     const esc = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    const escAttr = s => esc(s).replace(/'/g, '&#39;');
     let rows = records.map(r => {
         const raw = r._rawNote || r.reason || '';
         const src = r._sourceRow ? `分頁「${r.sheet}」第 ${r.sourceRow || r._sourceRow} 列` : `分頁「${r.sheet}」`;
-        const hint = `原始資料來源:\n${src}\n\n原文:\n${raw}`;
-        return `<tr class="src-row" title="${esc(hint)}" data-src="${esc(raw)}">${office ? '' : `<td>${r.office}</td>`}<td>${r.sheet}</td><td>${r.type}</td><td>${r.person || '<span class="dash-soft">–</span>'}</td><td class="num-cell">${r.amount.toLocaleString()}</td><td>${r.reason}</td></tr>`;
+        const personForHl = (r.person || '').trim();
+        return `<tr class="src-row" data-tip-src="${escAttr(src)}" data-tip-raw="${escAttr(raw)}" data-tip-name="${escAttr(personForHl)}">${office ? '' : `<td>${r.office}</td>`}<td>${r.sheet}</td><td>${r.type}</td><td>${r.person || '<span class="dash-soft">–</span>'}</td><td class="num-cell">${r.amount.toLocaleString()}</td><td>${r.reason}</td></tr>`;
     }).join('');
     document.getElementById('officeTable').innerHTML = `
         <table><thead><tr>${officeHead}<th>分頁</th><th>類型</th><th>姓名</th><th class="num-col">金額</th><th>事由</th></tr></thead><tbody>
