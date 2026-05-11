@@ -1347,12 +1347,34 @@ function splitPersons(personStr, totalAmount) {
     text = text.replace(/([\u4e00-\u9fff][\u4e00-\u9fff、，,＋+\s]*?)\s*\$\s*(\d+(?:\.\d+)?)\s*\*\s*(\d+)\s*人?/g, (_, names, amt, n) => {
         const key = `\u0000G${gIdx++}\u0000`;
         groupMap[key] = {
+            type: 'multi-name',
             names: names.trim().split(/[、,，+＋]/).map(s => s.trim()).filter(Boolean),
             perAmount: parseFloat(amt),
             count: parseInt(n, 10) || 1
         };
         return key;
     });
+
+    // (1c) v6.8.0 fix: 保護「姓名$X+$Y+...$Z」同人多筆金額，避免 + 拆散後第二筆變無名
+    //   例：「3/4、4/1呂佳卉$215+$157」清完日期 → 「呂佳卉$215+$157」
+    //       若不保護，split 後 ['呂佳卉$215', '$157']，第二筆無姓名 → 違反 feedback_travel_no_name_loss
+    //   保護後展開為「呂佳卉 $215」+「呂佳卉 $157」兩筆同名
+    text = text.replace(
+        /([\u4e00-\u9fff]{2,4})\s*\$\s*(\d+(?:\.\d+)?(?:\s*[+＋]\s*\$\s*\d+(?:\.\d+)?)+)/g,
+        (match, name, amountsStr) => {
+            const amts = amountsStr.split(/\s*[+＋]\s*/)
+                .map(a => parseFloat(a.replace(/[\$\s]/g, '')))
+                .filter(n => !isNaN(n));
+            if (amts.length < 2) return match;
+            const key = `\u0000P${gIdx++}\u0000`;
+            groupMap[key] = {
+                type: 'multi-amount',
+                name: name,
+                amounts: amts
+            };
+            return key;
+        }
+    );
 
     // (2) 多種分隔符拆分:+ ＋ 、 , ， / ・ & 及 和 兼
     const parts = text.split(/[+＋、,，/・&]|\s*(?:及|和|兼)\s*/);
@@ -1363,8 +1385,14 @@ function splitPersons(personStr, totalAmount) {
         if (!part) continue;
 
         // (A) 群組占位符 → 展開成多筆
-        if (part.startsWith('\u0000G') && groupMap[part]) {
+        if ((part.startsWith('\u0000G') || part.startsWith('\u0000P')) && groupMap[part]) {
             const g = groupMap[part];
+            // v6.8.0：multi-amount (姓名$X+$Y+...$Z 同人多筆) 分支
+            if (g.type === 'multi-amount') {
+                g.amounts.forEach(amt => results.push({ name: g.name, amount: amt }));
+                if (typeof addLog === 'function') addLog(`"${g.name}$${g.amounts.join('+$')}" 展開為 ${g.amounts.length} 筆同名`);
+                continue;
+            }
             if (g.names.length > 0) {
                 g.names.forEach(nm => results.push({ name: nm, amount: g.perAmount }));
                 for (let i = g.names.length; i < g.count; i++) results.push({ name: '', amount: g.perAmount });
