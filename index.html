@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>差旅明細整理系統 v6.8.0</title>
+    <title>差旅明細整理系統 v6.8.1</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -967,7 +967,7 @@
     <header class="app-header">
         <div class="app-header-top">
             <h1>差旅明細整理系統</h1>
-            <span class="app-version">v6.8.0</span>
+            <span class="app-version">v6.8.1</span>
         </div>
         <div class="app-flow">
             會計室信件<span class="sep">›</span>旅費彙整表.xls<span class="sep">›</span>上傳<span class="sep">›</span>選衛生所<span class="sep">›</span>匯出 Excel
@@ -2186,6 +2186,32 @@ function processFile(file) {
 
             const data = new Uint8Array(e.target.result);
             const wb = XLSX.read(data, { type: 'array' });
+
+            // v6.8.1 fix: 展開合併儲存格
+            //   xls 內「衛生所/領受人」格式常見：李麗萍 cell 跨兩列、第二列領受人 cell 空
+            //   SheetJS 預設不展開 merges → getRow(sheet, r) 讀第二列領受人為空 → 318 被 skip 或變「— 待補姓名」
+            //   修法：載入後立刻把每個 merge range 內所有 cell 都填回主格值
+            //   合計/總計列在 extractExpenseReportSheet 已過濾，不會被誤計
+            wb.SheetNames.forEach(function(_sn) {
+                var _ws = wb.Sheets[_sn];
+                var _merges = _ws && _ws['!merges'];
+                if (!_merges || !_merges.length) return;
+                _merges.forEach(function(m) {
+                    var startAddr = XLSX.utils.encode_cell({ r: m.s.r, c: m.s.c });
+                    var startCell = _ws[startAddr];
+                    if (!startCell || startCell.v === undefined || startCell.v === null) return;
+                    for (var r = m.s.r; r <= m.e.r; r++) {
+                        for (var c = m.s.c; c <= m.e.c; c++) {
+                            if (r === m.s.r && c === m.s.c) continue;
+                            var addr = XLSX.utils.encode_cell({ r: r, c: c });
+                            if (!_ws[addr]) {
+                                _ws[addr] = { t: startCell.t, v: startCell.v, w: startCell.w };
+                            }
+                        }
+                    }
+                });
+            });
+
             const allRecords = [];
 
             addLog(`${file.name} — 共 ${wb.SheetNames.length} 個分頁`);
