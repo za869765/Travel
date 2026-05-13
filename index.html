@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>差旅明細整理系統 v6.8.3</title>
+    <title>差旅明細整理系統 v6.8.4</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -967,7 +967,7 @@
     <header class="app-header">
         <div class="app-header-top">
             <h1>差旅明細整理系統</h1>
-            <span class="app-version">v6.8.3</span>
+            <span class="app-version">v6.8.4</span>
         </div>
         <div class="app-flow">
             會計室信件<span class="sep">›</span>旅費彙整表.xls<span class="sep">›</span>上傳<span class="sep">›</span>選衛生所<span class="sep">›</span>匯出 Excel
@@ -1241,6 +1241,13 @@ function resolveOffice(name) {
     if (!name) return name;
     // 去除所有空格（含全形空格 \u3000、不斷行空格 \u00a0 等）
     let clean = name.replace(/[\s\u3000\u00a0]+/g, '');
+    // v6.8.4: 強力清理 — 結果必須整併進 37 區清單
+    //   - 「衛生所衛生所…」→「衛生所」
+    //   - 「XX區衛生局衛生所」→「XX區衛生所」(衛生局為行政單位視為同所)
+    //   - 結尾「衛生局」→ 去除，讓後續流程當地名處理
+    clean = clean.replace(/(?:衛生所){2,}/g, '衛生所');
+    clean = clean.replace(/衛生局衛生所/g, '衛生所');
+    clean = clean.replace(/衛生局$/, '');
     // z-code 對照
     const key = clean.toLowerCase();
     if (OFFICE_CODE_MAP[key]) return OFFICE_CODE_MAP[key];
@@ -1252,6 +1259,9 @@ function resolveOffice(name) {
     // 去掉「區衛生所」後再試
     const noDistSuffix = clean.replace(/[區鄉市]?衛生所$/, '');
     if (noDistSuffix !== clean && OFFICE_NAME_MAP[noDistSuffix]) return OFFICE_NAME_MAP[noDistSuffix];
+    // v6.8.4: 開頭 1-3 中文字 +「區/鄉/市」prefix 模糊比對（吃掉後面雜訊如「衛生局衛生所」未清乾淨者）
+    const prefixMatch = clean.match(/^([一-鿿]{1,3}[區鄉市])/);
+    if (prefixMatch && OFFICE_NAME_MAP[prefixMatch[1]]) return OFFICE_NAME_MAP[prefixMatch[1]];
     // 含衛生所則回傳清理版
     if (clean.includes('衛生所')) return clean;
     // 最後嘗試純地名
