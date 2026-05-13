@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>差旅明細整理系統 v6.8.2</title>
+    <title>差旅明細整理系統 v6.8.3</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -967,7 +967,7 @@
     <header class="app-header">
         <div class="app-header-top">
             <h1>差旅明細整理系統</h1>
-            <span class="app-version">v6.8.2</span>
+            <span class="app-version">v6.8.3</span>
         </div>
         <div class="app-flow">
             會計室信件<span class="sep">›</span>旅費彙整表.xls<span class="sep">›</span>上傳<span class="sep">›</span>選衛生所<span class="sep">›</span>匯出 Excel
@@ -2009,8 +2009,8 @@ function extractSelfOutput(sheet, sheetName) {
     for (let r = headerRow + 1; r < nrows; r++) {
         const row = getRow(sheet, r);
         const first = String(row[0] || '').trim();
-        // 遇到「個人小計」「加班費彙整」「製表人」就停止
-        if (first === '個人小計' || first === '加班費彙整' || first.startsWith('製表人')) break;
+        // 遇到「個人小計」「加班費明細/彙整」「製表人」就停止（向後相容舊版匯出）
+        if (first === '個人小計' || first === '加班費明細' || first === '加班費彙整' || first.startsWith('製表人')) break;
         // 不用 isSkipRow（分頁名可能含「合計」字樣），改用精準判斷
         const personVal = String(row[colPerson] || '').trim();
         if (personVal === '合計' || personVal === '總計') continue;
@@ -2652,9 +2652,9 @@ function downloadExcel() {
     idx.personTotal = data.length;      data.push(padRow(['總計', grandTravelCount, ...grandVals, grandVals.reduce((s, v) => s + v, 0), '']));
     data.push(padRow([]));
 
-    // === 區塊3: 加班費彙整 ===
+    // === 區塊3: 加班費明細 ===
     if (otRecords.length > 0) {
-        idx.otTitle = data.length;      data.push(padRow(['加班費彙整']));
+        idx.otTitle = data.length;      data.push(padRow(['加班費明細']));
         idx.otHeader = data.length;     data.push(padRow(['分頁', '姓名', '金額', '備註']));
         idx.otDataStart = data.length;
         otRecords.forEach(r => data.push(padRow([r.sheet, r.person, r.amount, r.reason])));
@@ -2708,6 +2708,10 @@ function downloadExcel() {
     });
     if (!ws['!rows']) ws['!rows'] = [];
     ws['!rows'][idx.title] = { hpt: 32 };
+    // v6.8.3: 個人小計資料列加高 36pt，方便領款人手寫簽名
+    for (let r = idx.personDataStart; r <= idx.personDataEnd; r++) {
+        ws['!rows'][r] = { hpt: 36 };
+    }
 
     // ---- 區塊1: 全部明細（7 欄，事由合併 E:G）----
     styleRow(idx.mainHeader, 0, MAX_COLS - 1, { font: { bold: true }, alignment: alignCenter, border: borderHeader });
@@ -2745,7 +2749,7 @@ function downloadExcel() {
         if (c >= 2) cell.z = '#,##0';
     }
 
-    // ---- 區塊3: 加班費彙整（7 欄，事由合併 D:G）----
+    // ---- 區塊3: 加班費明細（7 欄，事由合併 D:G）----
     if (idx.otTitle !== undefined) {
         styleRow(idx.otTitle, 0, MAX_COLS - 1, {
             font: { bold: true, sz: 13 },
@@ -2781,7 +2785,7 @@ function downloadExcel() {
     merges.push({ s: { r: idx.mainTotal, c: 4 }, e: { r: idx.mainTotal, c: MAX_COLS - 1 } });
     if (idx.otTitle !== undefined) {
         merges.push({ s: { r: idx.otTitle, c: 0 }, e: { r: idx.otTitle, c: MAX_COLS - 1 } });
-        // 加班費彙整：事由欄合併 D:G — v6.8.2 改 7 欄
+        // 加班費明細：事由欄合併 D:G — v6.8.2 改 7 欄
         merges.push({ s: { r: idx.otHeader, c: 3 }, e: { r: idx.otHeader, c: MAX_COLS - 1 } });
         for (let r = idx.otDataStart; r <= idx.otDataEnd; r++) {
             merges.push({ s: { r, c: 3 }, e: { r, c: MAX_COLS - 1 } });
