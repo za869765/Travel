@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>差旅明細整理系統 v6.8.4</title>
+    <title>差旅明細整理系統 v6.8.5</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -967,7 +967,7 @@
     <header class="app-header">
         <div class="app-header-top">
             <h1>差旅明細整理系統</h1>
-            <span class="app-version">v6.8.4</span>
+            <span class="app-version">v6.8.5</span>
         </div>
         <div class="app-flow">
             會計室信件<span class="sep">›</span>旅費彙整表.xls<span class="sep">›</span>上傳<span class="sep">›</span>選衛生所<span class="sep">›</span>匯出 Excel
@@ -1631,6 +1631,8 @@ function findHeaderRow(sheet, keyword) {
     for (let r = 0; r < Math.min(nrows, 15); r++) {
         const row = getRow(sheet, r);
         const cells = row.map(v => String(v).trim()).filter(s => s);
+        // v6.8.5: 整列同字串視為合併標題列（展開後），不是真正的 header
+        if (cells.length >= 2 && new Set(cells).size === 1) continue;
         // 欄位標題列：至少2個不同cell有關鍵字
         let hits = 0;
         cells.forEach(s => {
@@ -1781,12 +1783,17 @@ function extractOvertimeSummary(sheet, sheetName, fileLabel) {
     for (let r = 0; r < Math.min(nrows, 5); r++) {
         const row = getRow(sheet, r);
         const cells = row.map(v => String(v).trim());
+        // v6.8.5: 整列同字串視為合併標題列（展開後），不是真正的 header
+        const nonEmpty = cells.filter(s => s);
+        if (nonEmpty.length >= 2 && new Set(nonEmpty).size === 1) continue;
         if (cells.some(s => s.includes('鄉鎮') || s.includes('衛生所') || s === '編號')) {
             startRow = r + 1;
+            // v6.8.5: 用 found 旗標避免被展開後相同字串多次覆寫
+            let officeFound = false, amountFound = false, personFound = false;
             cells.forEach((s, c) => {
-                if (s.includes('鄉鎮') || s.includes('衛生所名稱') || s.includes('衛生所')) officeCol = c;
-                if (s === '金額' || s === '總計' || (s.includes('金額') && !s.includes('總'))) amountCol = c;
-                if (s.includes('領受人')) personCol = c;
+                if ((s.includes('鄉鎮') || s.includes('衛生所名稱') || s.includes('衛生所')) && !officeFound) { officeCol = c; officeFound = true; }
+                if ((s === '金額' || s === '總計' || (s.includes('金額') && !s.includes('總'))) && !amountFound) { amountCol = c; amountFound = true; }
+                if (s.includes('領受人') && !personFound) { personCol = c; personFound = true; }
             });
             break;
         }
