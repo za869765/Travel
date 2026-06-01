@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>差旅明細整理系統 v6.10.3</title>
+    <title>差旅明細整理系統 v6.10.4</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -979,6 +979,12 @@
         .ocr-amt { font-size: 12px; color: #94a3b8; font-variant-numeric: tabular-nums; min-width: 38px; text-align: right; }
         .ocr-imgs { display: flex; flex-wrap: wrap; gap: 10px; margin: 6px 0 10px; }
         .ocr-img { max-height: 240px; max-width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; cursor: zoom-in; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+        .ocr-overlay { position: fixed; inset: 0; z-index: 99999; display: flex; align-items: center; justify-content: center; background: rgba(15,23,42,.74); backdrop-filter: blur(2px); }
+        .ocr-overlay-box { background: #fff; border-radius: 16px; padding: 30px 44px; text-align: center; box-shadow: 0 12px 48px rgba(0,0,0,.35); max-width: 90%; }
+        .ocr-spinner { width: 52px; height: 52px; margin: 0 auto 18px; border: 6px solid #ede9fe; border-top-color: #6d28d9; border-radius: 50%; animation: ocrspin .8s linear infinite; }
+        @keyframes ocrspin { to { transform: rotate(360deg); } }
+        #ocrOverlayText { font-size: 17px; font-weight: 700; color: #1e293b; }
+        .ocr-overlay-sub { font-size: 12.5px; color: #64748b; margin-top: 10px; line-height: 1.7; }
         .cat5-box { margin-top: 12px; border-top: 1px dashed #cbd5e1; padding-top: 10px; }
         .cat5-wrap { position: relative; display: inline-block; max-width: 100%; }
         .cat5-img { max-height: 320px; max-width: 100%; display: block; border: 1px solid #cbd5e1; border-radius: 6px; }
@@ -992,7 +998,7 @@
     <header class="app-header">
         <div class="app-header-top">
             <h1>差旅明細整理系統</h1>
-            <span class="app-version">v6.10.3</span>
+            <span class="app-version">v6.10.4</span>
         </div>
         <div class="app-flow">
             會計室信件<span class="sep">›</span>旅費彙整表.xls<span class="sep">›</span>上傳<span class="sep">›</span>選衛生所<span class="sep">›</span>匯出 Excel
@@ -2592,6 +2598,17 @@ let _ocrStatusHtml = '';       // 狀態訊息（跨重繪保留）
 
 function ocrSetStatus(m){ _ocrStatusHtml = m; const s=document.getElementById('ocrStatus'); if(s) s.innerHTML=m; }
 function bytesToB64(u8){ let s=''; const CH=0x8000; for(let i=0;i<u8.length;i+=CH) s+=String.fromCharCode.apply(null,u8.subarray(i,i+CH)); return btoa(s); }
+/* v6.10.4：全螢幕「辨識中」遮罩（計秒 + 120 秒上限，逾時自動關） */
+let _ocrOvStart=0, _ocrOvTimer=null;
+function showOcrOverlay(text){
+    const o=document.getElementById('ocrOverlay'); if(!o) return;
+    setOcrOverlay(text||'辨識內嵌掃描圖中…');
+    o.style.display='flex'; _ocrOvStart=Date.now();
+    if(_ocrOvTimer) clearInterval(_ocrOvTimer);
+    _ocrOvTimer=setInterval(()=>{ const s=Math.round((Date.now()-_ocrOvStart)/1000); const e=document.getElementById('ocrOvSec'); if(e) e.textContent=s; if(s>=120){ hideOcrOverlay(); ocrSetStatus('⏱️ 辨識逾時（>120 秒）已停止等待，可重新上傳再試。'); renderOcrPanel(); } },1000);
+}
+function setOcrOverlay(text){ const t=document.getElementById('ocrOverlayText'); if(t) t.textContent=text; }
+function hideOcrOverlay(){ const o=document.getElementById('ocrOverlay'); if(o) o.style.display='none'; if(_ocrOvTimer){ clearInterval(_ocrOvTimer); _ocrOvTimer=null; } }
 function unzipXlsx(u8){ try { return (window.fflate && fflate.unzipSync) ? fflate.unzipSync(u8) : null; } catch(e){ return null; } }
 
 /* 解析 drawing 關聯：sheet 名 → 內嵌圖路徑（image1→cat1…） */
@@ -2669,19 +2686,24 @@ async function autoFillNames(){
         /* cat1 + cat5：內嵌「人名掃描圖」都自動送後端 Gemini pro 辨識（cat4 由 Excel 處理） */
         const ocrImgs = [...(sheetImgs['1']||[]), ...(sheetImgs['5']||[])];
         const office = (document.getElementById('officeSelect')||{}).value || '(全部)';
-        for(const path of ocrImgs){
-            if(!files[path]) continue;
-            try {
-                ocrSetStatus('🔍 辨識內嵌掃描圖中…（Gemini pro，約 30 秒，請稍候）'); renderOcrPanel();
-                const b64 = bytesToB64(files[path]);
-                const rows = await backendOcr(b64, /\.png$/i.test(path)?'image/png':'image/jpeg', office);
-                const named = rows.filter(r=>r && r.name && String(r.name).trim());
-                const res = applyOcrRows(named);
-                let msg = '✅ 辨識 '+rows.length+' 列、自動補上 '+res.filled+' 人。';
-                if(res.flagged.length) msg += ' ⚠️ '+res.flagged.length+' 所金額對不上彙整表、未套用：'+res.flagged.join('、');
-                ocrSetStatus(msg+'　<b style="color:#b45309">姓名僅供參考，請對照上方原圖確認。</b>'); renderOcrPanel();
-            } catch(e){ ocrSetStatus('辨識失敗：'+e.message+'（可對照上方原圖、在下方格子手動補）'); renderOcrPanel(); }
-        }
+        if(ocrImgs.length) showOcrOverlay('辨識內嵌掃描圖中…（共 '+ocrImgs.length+' 張）');
+        try {
+            let _i=0;
+            for(const path of ocrImgs){
+                if(!files[path]) continue;
+                _i++;
+                try {
+                    setOcrOverlay('辨識內嵌掃描圖中…（第 '+_i+'/'+ocrImgs.length+' 張，每張約 30–45 秒）'); ocrSetStatus('🔍 辨識中…'); renderOcrPanel();
+                    const b64 = bytesToB64(files[path]);
+                    const rows = await backendOcr(b64, /\.png$/i.test(path)?'image/png':'image/jpeg', office);
+                    const named = rows.filter(r=>r && r.name && String(r.name).trim());
+                    const res = applyOcrRows(named);
+                    let msg = '✅ 辨識 '+rows.length+' 列、自動補上 '+res.filled+' 人。';
+                    if(res.flagged.length) msg += ' ⚠️ '+res.flagged.length+' 所金額對不上彙整表、未套用：'+res.flagged.join('、');
+                    ocrSetStatus(msg+'　<b style="color:#b45309">姓名僅供參考，請對照上方原圖確認。</b>'); renderOcrPanel();
+                } catch(e){ ocrSetStatus('辨識失敗：'+e.message+'（可對照上方原圖、在下方格子手動補）'); renderOcrPanel(); }
+            }
+        } finally { hideOcrOverlay(); }
     }
 }
 
@@ -2745,10 +2767,13 @@ function renderOcrPanel(){
     const remain = resultData.allRecords.filter(r=>r._backfill && !r.person);
     const ocrFilled = resultData.allRecords.filter(r=>r._ocr);
     if(!remain.length && !ocrFilled.length){ area.innerHTML=''; return; }
+    // v6.10.4：只顯示「目前選的衛生所」的補名格；選「全部衛生所」才全顯示
+    const _selOff = (document.getElementById('officeSelect')||{}).value || '';
+    const shownOcr = _selOff ? ocrFilled.filter(r=>r.office===_selOff) : ocrFilled;
     let editHtml='';
-    if(ocrFilled.length){
-        const byOff={}; ocrFilled.forEach(r=>{ (byOff[r.office]=byOff[r.office]||[]).push(r); });
-        editHtml='<div class="ocr-edit"><div class="ocr-sub">已自動補名字（可直接改，按「套用」重算；姓名僅供參考、請對照原圖）：</div><div id="ocrEditList">';
+    if(shownOcr.length){
+        const byOff={}; shownOcr.forEach(r=>{ (byOff[r.office]=byOff[r.office]||[]).push(r); });
+        editHtml='<div class="ocr-edit"><div class="ocr-sub">已自動補名字'+(_selOff?'（'+_selOff.replace('區衛生所','').replace('衛生所','')+'）':'（全部衛生所）')+'（可直接改，按「套用」重算；姓名僅供參考、請對照原圖）：</div><div id="ocrEditList">';
         Object.keys(byOff).forEach(off=>{ byOff[off].forEach(r=>{ editHtml+='<div class="ocr-row"><span class="ocr-off">'+((OFFICE_CODE_REVERSE[off]||'')+' '+off.replace('區衛生所','').replace('衛生所','')).trim()+'</span><input data-ocrid="'+r._ocrId+'" value="'+(r.person||'').replace(/"/g,'&quot;')+'" placeholder="姓名"><span class="ocr-amt">'+r.amount+'</span></div>'; }); });
         editHtml+='</div><button class="btn btn-sm" onclick="applyNameEdits()">✓ 套用名字修改並重算</button></div>';
     }
@@ -2844,6 +2869,7 @@ function filterByOffice() {
 
     // 個人小計
     renderPersonTable(office);
+    renderOcrPanel();   // v6.10.4：切換衛生所時，補名格只顯示該所
 }
 
 function renderPersonTable(filterOffice) {
@@ -3135,5 +3161,12 @@ function copyLogAndClose() {
     }
 }
 </script>
+<div id="ocrOverlay" class="ocr-overlay" style="display:none">
+    <div class="ocr-overlay-box">
+        <div class="ocr-spinner"></div>
+        <div id="ocrOverlayText">辨識內嵌掃描圖中…</div>
+        <div class="ocr-overlay-sub">Gemini pro 辨識中，已 <b id="ocrOvSec">0</b> 秒（上限 120 秒）<br>完成前數字會跳動，屬正常，請稍候</div>
+    </div>
+</div>
 </body>
 </html>
