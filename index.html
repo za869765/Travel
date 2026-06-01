@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>差旅明細整理系統 v6.8.5</title>
+    <title>差旅明細整理系統 v6.8.6</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -967,7 +967,7 @@
     <header class="app-header">
         <div class="app-header-top">
             <h1>差旅明細整理系統</h1>
-            <span class="app-version">v6.8.5</span>
+            <span class="app-version">v6.8.6</span>
         </div>
         <div class="app-flow">
             會計室信件<span class="sep">›</span>旅費彙整表.xls<span class="sep">›</span>上傳<span class="sep">›</span>選衛生所<span class="sep">›</span>匯出 Excel
@@ -2183,6 +2183,56 @@ function extractExpenseReportSheet(sheet, sheetName) {
     return records;
 }
 
+// ===== v6.8.6: 代辦彙整表回補 =====
+// 某類別的明細分頁空白 / 壞格式 (0 筆) 時，改從「彙整表」該類別欄位回補各衛生所金額。
+// 彙整表版面：列0 表頭 [0]編號 [1]科室別 [2]1.心健科 [3]2.疾管科 … [11]合計；
+//            列1 用途；列2+ 為 z01..Z37（[0]z碼 [1]衛生所 [2..]各類別金額）。
+// 只回補「明細分頁存在但 0 筆」的類別 → 不與正常分頁(如 cat2/cat3)重複計算。
+// 回補的紀錄無領受人姓名（來源本就無），列為個人小計待補。
+function backfillFromSummarySheet(summarySheet, recordCountBySheet) {
+    if (!summarySheet) return [];
+    const nrows = sheetRows(summarySheet);
+    const header     = getRow(summarySheet, 0).map(v => String(v == null ? '' : v).trim());
+    const purposeRow = getRow(summarySheet, 1).map(v => String(v == null ? '' : v).trim());
+
+    // 找「類別欄」：表頭帶數字前綴（如「1.心健科」或純「6」），且該數字對應的明細分頁 0 筆
+    const catCols = [];
+    header.forEach((h, c) => {
+        const m = h.match(/^(\d+)\b/);
+        if (!m) return;                                  // 編號/科室別/合計 等略過
+        const sheetName = m[1];
+        const cnt = recordCountBySheet[sheetName];
+        if (cnt === undefined || cnt > 0) return;        // 分頁不存在 or 已有明細 → 不回補
+        let purpose = (purposeRow[c] || '').replace(/^用途[：:]\s*/, '').trim();
+        if (!purpose) purpose = h;
+        catCols.push({ col: c, sheetName, purpose });
+    });
+
+    const recs = [];
+    catCols.forEach(({ col, sheetName, purpose }) => {
+        let feeType = '差旅費';
+        if (purpose.includes('加班')) feeType = '加班費';
+        else if (!purpose.includes('交通') && !purpose.includes('差旅') && !purpose.includes('旅費') && !purpose.includes('訪視') && !purpose.includes('都治') && !purpose.includes('檢討')) feeType = '其他費用';
+
+        for (let r = 2; r < nrows; r++) {
+            const row = getRow(summarySheet, r);
+            const zCode = String(row[0] || '').trim();
+            if (!/^z\d{2}$/i.test(zCode)) continue;       // 只取 z-code 資料列，跳過總計/註記列
+            const office = String(row[1] || '').trim();
+            const amount = safeFloat(row[col]);
+            if (amount <= 0) continue;
+            recs.push({
+                office, person: '', amount,
+                sheet: purpose, type: feeType, reason: purpose,
+                _srcAmount: amount,
+                _rawNote: `彙整表回補（分頁「${sheetName}」無明細）：${office} ${amount} 元`,
+                _sourceRow: r + 1, _backfill: true, _backfillSheet: sheetName,
+            });
+        }
+    });
+    return recs;
+}
+
 // ===== 主處理 =====
 function processFile(file) {
     document.getElementById('progressArea').style.display = 'block';
@@ -2242,6 +2292,7 @@ function processFile(file) {
             });
 
             const allRecords = [];
+            const sheetRecordCounts = {};  // v6.8.6: 各代辦分頁擷取筆數，供彙整表回補判斷
 
             addLog(`${file.name} — 共 ${wb.SheetNames.length} 個分頁`);
             setPct(50);
@@ -2267,10 +2318,11 @@ function processFile(file) {
 
                 if (isExpenseReport) {
                     if (idx === 0) {
-                        addLog(`   [${idx}] ${name} → 彙整總表 (略過)`);
+                        addLog(`   [${idx}] ${name} → 彙整總表 (保留供回補)`);
                         return;
                     }
                     const recs = extractExpenseReportSheet(sheet, name);
+                    sheetRecordCounts[name] = recs.length;   // v6.8.6
                     allRecords.push(...recs);
                     addLog(`   [${idx}] ${name} → 代辦明細 (${recs.length} 筆)`);
                     return;
@@ -2298,6 +2350,17 @@ function processFile(file) {
                 if (recs.length > 0 || type === 'summary')
                     addLog(`   [${idx}] ${name} → ${typeLabels[type] || type} (${recs.length} 筆)`);
             });
+
+            // v6.8.6: 代辦彙整表回補 — 明細分頁空白/壞格式者，從彙整表該欄補回各所金額
+            if (isExpenseReport) {
+                const backfill = backfillFromSummarySheet(wb.Sheets[wb.SheetNames[0]], sheetRecordCounts);
+                if (backfill.length) {
+                    allRecords.push(...backfill);
+                    const byCat = {};
+                    backfill.forEach(r => { byCat[r._backfillSheet] = (byCat[r._backfillSheet] || 0) + 1; });
+                    addLog(`彙整表回補 ${backfill.length} 筆（無明細分頁）：${Object.entries(byCat).map(([k, v]) => `分頁${k}(${v}筆)`).join('、')}`);
+                }
+            }
 
             setPct(80);
 
