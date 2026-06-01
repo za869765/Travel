@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>差旅明細整理系統 v6.8.6</title>
+    <title>差旅明細整理系統 v6.9.0</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -959,7 +959,23 @@
             .app-header, .section { border-color: black; }
             .dropzone, .progress-area, .btn-group, .filter-bar { display: none !important; }
             tbody tr.grand-total td { border-top: 2.25pt double black; }
+            #ocrCard { display: none !important; }
         }
+        .btn-sm { padding: 7px 12px; font-size: 13px; }
+        #ocrCard .section-meta { color: #ef6c00; }
+        .ocr-intro { font-size: 13px; color: #475569; margin-bottom: 12px; line-height: 1.65; }
+        .ocr-set, .ocr-up { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+        .ocr-set label { font-size: 12px; color: #64748b; font-weight: 600; }
+        .ocr-set input { flex: 1; min-width: 180px; padding: 7px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; }
+        .ocr-up input[type=file] { font-size: 12px; }
+        .ocr-status { font-size: 12px; color: #0f766e; margin: 6px 0; min-height: 18px; line-height: 1.5; word-break: break-all; }
+        .ocr-edit { margin-top: 12px; border-top: 1px dashed #cbd5e1; padding-top: 10px; }
+        .ocr-sub { font-size: 12px; color: #64748b; margin-bottom: 8px; font-weight: 600; }
+        #ocrEditList { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+        .ocr-row { display: flex; align-items: center; gap: 6px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 4px 8px; }
+        .ocr-off { font-size: 11px; color: #475569; min-width: 60px; }
+        .ocr-row input { width: 88px; padding: 4px 6px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 13px; }
+        .ocr-amt { font-size: 12px; color: #94a3b8; font-variant-numeric: tabular-nums; min-width: 38px; text-align: right; }
     </style>
 </head>
 <body>
@@ -967,7 +983,7 @@
     <header class="app-header">
         <div class="app-header-top">
             <h1>差旅明細整理系統</h1>
-            <span class="app-version">v6.8.6</span>
+            <span class="app-version">v6.9.0</span>
         </div>
         <div class="app-flow">
             會計室信件<span class="sep">›</span>旅費彙整表.xls<span class="sep">›</span>上傳<span class="sep">›</span>選衛生所<span class="sep">›</span>匯出 Excel
@@ -1019,6 +1035,17 @@
                 </div>
             </div>
             <div id="resultSummary"></div>
+        </section>
+
+        <section class="section" id="ocrCard" style="display:none">
+            <div class="section-header">
+                <div class="section-title">
+                    <span class="section-index">[3.5]</span>
+                    <span>📷 掃描圖補名字（OCR）</span>
+                </div>
+                <div class="section-meta">待補姓名專用</div>
+            </div>
+            <div class="section-body"></div>
         </section>
 
         <section class="section" id="filterCard">
@@ -2543,6 +2570,173 @@ function showResult() {
     }
 
     filterByOffice();
+    renderOcrPanel();
+}
+
+/* ═══════════════════════════════════════════════════════
+   v6.9.0：掃描圖 OCR 補名字（Gemini 主 / Tesseract 本機備援）
+   彙整表回補的「待補姓名」列，上傳該類別的「出差旅費明細清單」
+   掃描圖，OCR 出每人 {衛生所,姓名,金額}，以彙整表金額把關後，
+   把 office 總額列拆成逐人列（姓名 OCR 盡力、可手動修正）。
+   金鑰只存在本機 localStorage，不寫入此公開 HTML。
+═══════════════════════════════════════════════════════ */
+function ocrGetKey(){ try { return (localStorage.getItem('geminiKey')||'').trim(); } catch(e){ return ''; } }
+function ocrSetKey(v){ try { localStorage.setItem('geminiKey',(v||'').trim()); } catch(e){} }
+function ocrGetModel(){ try { return localStorage.getItem('geminiModel')||'gemini-2.5-flash'; } catch(e){ return 'gemini-2.5-flash'; } }
+function ocrSetModel(v){ try { localStorage.setItem('geminiModel',v||'gemini-2.5-flash'); } catch(e){} }
+function ocrSetStatus(m){ const s=document.getElementById('ocrStatus'); if(s) s.textContent=m; }
+
+function fileToBase64(file){
+    return new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(String(r.result).split(',')[1]); r.onerror=rej; r.readAsDataURL(file); });
+}
+
+async function geminiOCR(file, model){
+    const key = ocrGetKey();
+    if(!key) throw new Error('尚未填入 Gemini API key');
+    const b64 = await fileToBase64(file);
+    const prompt = '這是台南市政府衛生局「出差旅費明細清單」掃描表。逐列辨識，回 JSON 陣列，每列鍵：office(衛生所全名如「佳里區衛生所」)、name(領受人姓名)、amount(總計金額數字)。領受人通常3個中文字(少數2或4)，務必逐字辨識、不可漏字或縮寫。不要「以下空白/合計/承辦人」列。只回純 JSON 陣列。';
+    const body = { contents:[{parts:[{text:prompt},{inline_data:{mime_type:(file.type||'image/jpeg'),data:b64}}]}], generationConfig:{responseMimeType:'application/json',temperature:0} };
+    const callModel = (m)=> fetch('https://generativelanguage.googleapis.com/v1beta/models/'+m+':generateContent?key='+encodeURIComponent(key), {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    let used = model;
+    let r = await callModel(model);
+    if(r.status===429 && model!=='gemini-2.5-flash'){ ocrSetStatus(model+' 免費額度不足(429)，自動改用 gemini-2.5-flash…'); used='gemini-2.5-flash'; r = await callModel('gemini-2.5-flash'); }
+    if(!r.ok){ const t=await r.text(); throw new Error('Gemini '+r.status+'：'+t.slice(0,180)); }
+    const j = await r.json();
+    const txt = j.candidates && j.candidates[0] && j.candidates[0].content && j.candidates[0].content.parts[0].text;
+    if(!txt) throw new Error('Gemini 無回傳內容');
+    let rows = JSON.parse(txt);
+    if(!Array.isArray(rows)) rows = rows.data || rows.rows || Object.values(rows).find(Array.isArray) || [];
+    return { rows, model: used };
+}
+
+let _tessP=null;
+function loadTesseract(){
+    if(window.Tesseract) return Promise.resolve();
+    if(!_tessP) _tessP = new Promise((res,rej)=>{ const s=document.createElement('script'); s.src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js'; s.onload=res; s.onerror=()=>rej(new Error('Tesseract.js 載入失敗（需連網）')); document.head.appendChild(s); });
+    return _tessP;
+}
+async function tesseractOCR(file){
+    await loadTesseract();
+    ocrSetStatus('本機辨識中（首次需下載中文模型，較久）…');
+    const out = await window.Tesseract.recognize(file,'chi_tra',{ logger:m=>{ if(m.status==='recognizing text') ocrSetStatus('本機辨識中… '+Math.round(m.progress*100)+'%'); } });
+    const rows=[];
+    (out.data.lines||[]).forEach(line=>{
+        const t=(line.text||'').replace(/\s+/g,' ').trim();
+        const om=t.match(/([一-鿿]{1,3})[區鄉市](?:衛生所)?/);
+        if(!om) return;
+        const office=om[1]+'區衛生所';
+        const nums=(t.match(/\d{1,4}/g)||[]).map(Number).filter(n=>n>=20&&n<=3000);
+        if(!nums.length) return;
+        const amount=nums[nums.length-1];
+        const after=(t.split(om[0])[1]||'');
+        const nm=after.match(/[一-鿿]{2,4}/);
+        rows.push({office, name:nm?nm[0]:'', amount});
+    });
+    return { rows, model:'本機 Tesseract' };
+}
+
+/* 用 OCR 結果把「待補姓名的彙整表回補列」拆成逐人列（金額對不上彙整表者不套用） */
+function applyOcrRows(ocrRows){
+    const records = resultData.allRecords.slice();
+    const byOffice = {};
+    ocrRows.forEach(r=>{ const o=resolveOffice(String(r.office||'')); const a=parseFloat(String(r.amount).replace(/,/g,''))||0; if(!o||!a) return; (byOffice[o]=byOffice[o]||[]).push({name:String(r.name||'').trim(), amount:a}); });
+    let filled=0; const flagged=[]; let oid=Date.now();
+    Object.keys(byOffice).forEach(office=>{
+        const people=byOffice[office];
+        const sum=people.reduce((s,p)=>s+p.amount,0);
+        const idx=records.findIndex(r=>r._backfill && !r.person && r.office===office && Math.abs((r.amount||0)-sum)<0.5);
+        if(idx<0){ flagged.push(office.replace('區衛生所','').replace('衛生所','')+'(OCR加總'+sum+')'); return; }
+        const base=records[idx];
+        const split=people.map(p=>({ office, person:p.name, amount:p.amount, sheet:base.sheet, type:base.type, reason:base.reason, _srcAmount:p.amount, _backfill:true, _ocr:true, _ocrId:'o'+(oid++) }));
+        records.splice(idx,1,...split);
+        filled+=people.length;
+    });
+    rerenderWithRecords(records);
+    return { filled, flagged };
+}
+
+/* 套用使用者對 OCR 名字的手動修改後重算 */
+function applyNameEdits(){
+    const records = resultData.allRecords.slice();
+    document.querySelectorAll('#ocrEditList input[data-ocrid]').forEach(inp=>{
+        const rec = records.find(r=>r._ocrId===inp.dataset.ocrid);
+        if(rec) rec.person = inp.value.trim();
+    });
+    rerenderWithRecords(records);
+}
+
+/* 從 records 重建 personList/offices/totals/三方把關並重繪（不動 processFile） */
+function rerenderWithRecords(records){
+    const validRecords = records.filter(r=>isValidOffice(r.office));
+    const personMap={}, unknownList=[];
+    validRecords.forEach(r=>{
+        if(r.person){ const k=r.office+'|'+r.person; if(!personMap[k]) personMap[k]={office:r.office,person:r.person,travelCount:0}; personMap[k][r.type]=(personMap[k][r.type]||0)+r.amount; if(r.type==='差旅費') personMap[k].travelCount++; }
+        else unknownList.push({office:r.office,person:'',travelCount:r.type==='差旅費'?1:0,[r.type]:r.amount,_unknown:true,_sheet:r.sheet});
+    });
+    const personList=[...Object.values(personMap),...unknownList].sort((a,b)=>a.office.localeCompare(b.office));
+    const offices=[...new Set(validRecords.map(r=>r.office))].filter(isValidOffice).sort((a,b)=>(OFFICE_ORDER[a]??999)-(OFFICE_ORDER[b]??999));
+    const overtimeCount=validRecords.filter(r=>r.type==='加班費').length;
+    const grandTotal=validRecords.reduce((s,r)=>s+r.amount,0);
+    const sourceByOffice={},detailByOffice={},personByOffice={};
+    validRecords.forEach(r=>{ if(r._srcAmount) sourceByOffice[r.office]=(sourceByOffice[r.office]||0)+r._srcAmount; detailByOffice[r.office]=(detailByOffice[r.office]||0)+r.amount; });
+    personList.forEach(p=>{ const s=(p['差旅費']||0)+(p['加班費']||0)+(p['其他費用']||0); personByOffice[p.office]=(personByOffice[p.office]||0)+s; });
+    const grandSource=Object.values(sourceByOffice).reduce((s,v)=>s+v,0);
+    const grandPerson=Object.values(personByOffice).reduce((s,v)=>s+v,0);
+    const unknownCount=validRecords.filter(r=>!r.person).length;
+    resultData=Object.assign({}, resultData, { allRecords:validRecords, offices, personList, overtimeCount, grandTotal, unknownCount, personCount:personList.length, sourceByOffice, detailByOffice, personByOffice, grandSource, grandPerson });
+    showResult();
+}
+
+/* OCR 面板：有「彙整表回補的待補姓名」時才出現 */
+function renderOcrPanel(){
+    const card=document.getElementById('ocrCard');
+    if(!card || !resultData || !resultData.allRecords){ if(card) card.style.display='none'; return; }
+    const remain = resultData.allRecords.filter(r=>r._backfill && !r.person);
+    const ocrFilled = resultData.allRecords.filter(r=>r._ocr);
+    if(!remain.length && !ocrFilled.length){ card.style.display='none'; return; }
+    card.style.display='';
+    const key=ocrGetKey();
+    const remainOffices=[...new Set(remain.map(r=>r.office))];
+    let editHtml='';
+    if(ocrFilled.length){
+        const byOff={}; ocrFilled.forEach(r=>{ (byOff[r.office]=byOff[r.office]||[]).push(r); });
+        editHtml='<div class="ocr-edit"><div class="ocr-sub">已補名字（可直接改，按「套用」重算）：</div><div id="ocrEditList">';
+        Object.keys(byOff).forEach(off=>{ byOff[off].forEach(r=>{ editHtml+='<div class="ocr-row"><span class="ocr-off">'+((OFFICE_CODE_REVERSE[off]||'')+' '+off.replace('區衛生所','').replace('衛生所','')).trim()+'</span><input data-ocrid="'+r._ocrId+'" value="'+(r.person||'').replace(/"/g,'&quot;')+'" placeholder="姓名"><span class="ocr-amt">'+r.amount+'</span></div>'; }); });
+        editHtml+='</div><button class="btn btn-sm" onclick="applyNameEdits()">✓ 套用名字修改並重算</button></div>';
+    }
+    const intro = remain.length
+        ? '尚有 <b>'+remain.length+'</b> 筆無姓名（'+remainOffices.length+' 所，來自彙整表回補）。上傳該類別的「出差旅費明細清單」掃描圖，自動補姓名＋拆分（金額以彙整表把關）。'
+        : '已全部補上姓名。如需重補，可再上傳掃描圖。';
+    card.querySelector('.section-body').innerHTML =
+        '<div class="ocr-intro">'+intro+'</div>'+
+        '<div class="ocr-set"><label>Gemini key</label>'+
+            '<input type="password" id="ocrKey" value="'+key.replace(/"/g,'&quot;')+'" placeholder="貼上你的 key（只存本機瀏覽器）">'+
+            '<select id="ocrModel" class="select"><option value="gemini-2.5-flash">gemini-2.5-flash（免費）</option><option value="gemini-2.5-pro">gemini-2.5-pro（需付費帳號）</option></select>'+
+        '</div>'+
+        '<div class="ocr-up"><input type="file" id="ocrImg" accept="image/*">'+
+            '<button class="btn btn-sm btn-primary" onclick="handleOcrUpload(\'gemini\')">🤖 用 Gemini 補名字</button>'+
+            '<button class="btn btn-sm" onclick="handleOcrUpload(\'tesseract\')">💻 本機 OCR（免 key）</button>'+
+        '</div>'+
+        '<div class="ocr-status" id="ocrStatus"></div>'+editHtml;
+    const ms=document.getElementById('ocrModel'); if(ms) ms.value=ocrGetModel();
+}
+
+async function handleOcrUpload(engine){
+    const inp=document.getElementById('ocrImg');
+    if(!inp || !inp.files || !inp.files.length){ ocrSetStatus('請先選擇掃描圖檔'); return; }
+    const keyEl=document.getElementById('ocrKey'); if(keyEl) ocrSetKey(keyEl.value);
+    const modelEl=document.getElementById('ocrModel'); const model=modelEl?modelEl.value:'gemini-2.5-flash'; ocrSetModel(model);
+    try {
+        ocrSetStatus('辨識中…');
+        const out = engine==='gemini' ? await geminiOCR(inp.files[0], model) : await tesseractOCR(inp.files[0]);
+        if(!out.rows || !out.rows.length){ ocrSetStatus('未辨識到任何資料列，請換清晰掃描圖'+(engine!=='gemini'?'或改用 Gemini':'')); return; }
+        const res = applyOcrRows(out.rows);   // 注意：此後面板已重繪，須用 ocrSetStatus 重新取得元素
+        let msg = '（'+out.model+'）辨識 '+out.rows.length+' 列、補上 '+res.filled+' 人';
+        if(res.flagged.length) msg += '；⚠️ '+res.flagged.length+' 所金額對不上彙整表未套用：'+res.flagged.join('、');
+        ocrSetStatus(msg);
+    } catch(e){
+        ocrSetStatus('失敗：'+e.message+(engine==='gemini'?'（可改按「本機 OCR」）':''));
+    }
 }
 
 // v6.6.5 把明細依 personList 順序排序（同一人的列聚在一起，順序與個人小計一致）
