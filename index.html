@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>差旅明細整理系統 v6.10.1</title>
+    <title>差旅明細整理系統 v6.10.2</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -992,7 +992,7 @@
     <header class="app-header">
         <div class="app-header-top">
             <h1>差旅明細整理系統</h1>
-            <span class="app-version">v6.10.1</span>
+            <span class="app-version">v6.10.2</span>
         </div>
         <div class="app-flow">
             會計室信件<span class="sep">›</span>旅費彙整表.xls<span class="sep">›</span>上傳<span class="sep">›</span>選衛生所<span class="sep">›</span>匯出 Excel
@@ -1046,17 +1046,6 @@
             <div id="resultSummary"></div>
         </section>
 
-        <section class="section" id="ocrCard" style="display:none">
-            <div class="section-header">
-                <div class="section-title">
-                    <span class="section-index">[3.5]</span>
-                    <span>📷 掃描圖補名字（OCR）</span>
-                </div>
-                <div class="section-meta">待補姓名專用</div>
-            </div>
-            <div class="section-body"></div>
-        </section>
-
         <section class="section" id="filterCard">
             <div class="section-header">
                 <div class="section-title">
@@ -1083,6 +1072,7 @@
                 </div>
             </div>
             <div class="section-body">
+                <div id="ocrArea"></div>
                 <div class="table-wrap" id="officeTable"></div>
             </div>
         </section>
@@ -2089,6 +2079,10 @@ function extractSelfOutput(sheet, sheetName) {
 
 // ===== 代辦經費彙整表偵測與解析 =====
 function isExpenseReportFile(wb, filename) {
+    // v6.10.2 防呆：自輸出整理總表(分頁|類型|姓名|金額表頭) 不可當代辦彙整表（檔名常含「代辦經費」）
+    for (const n of wb.SheetNames) {
+        if (detectSheetType(wb.Sheets[n], n, 0) === 'self_output') return false;
+    }
     if (filename && filename.includes('代辦經費')) return true;
     if (wb.SheetNames.length >= 3) {
         const numSheets = wb.SheetNames.filter(n => /^\d+$/.test(n.trim())).length;
@@ -2779,12 +2773,12 @@ function rerenderWithRecords(records){
 
 /* 補名字面板：原圖預覽 + 可改名字 + 狀態（自動執行、無上傳鈕、無 key） */
 function renderOcrPanel(){
-    const card=document.getElementById('ocrCard');
-    if(!card || !resultData || !resultData.allRecords){ if(card) card.style.display='none'; return; }
+    const area=document.getElementById('ocrArea');
+    if(!area || !resultData || !resultData.allRecords){ if(area) area.innerHTML=''; return; }
+    if(!_autoOcrDone && lastUploadFile) autoFillNames();
     const remain = resultData.allRecords.filter(r=>r._backfill && !r.person);
     const ocrFilled = resultData.allRecords.filter(r=>r._ocr);
-    if(!remain.length && !ocrFilled.length){ card.style.display='none'; return; }
-    card.style.display='';
+    if(!remain.length && !ocrFilled.length){ area.innerHTML=''; return; }
     let editHtml='';
     if(ocrFilled.length){
         const byOff={}; ocrFilled.forEach(r=>{ (byOff[r.office]=byOff[r.office]||[]).push(r); });
@@ -2803,12 +2797,11 @@ function renderOcrPanel(){
             '<div class="cat5-sliders">左緣 <input type="range" id="cat5L" min="0" max="100" value="'+_cat5.maskL+'" oninput="updateCat5Mask()"> 右緣 <input type="range" id="cat5R" min="0" max="100" value="'+_cat5.maskR+'" oninput="updateCat5Mask()"></div>'+
             '<button class="btn btn-sm btn-primary" onclick="sendCat5()">🚫 送出辨識（已遮身分證）</button> <span id="cat5Status" class="ocr-status" style="display:inline-block;margin-left:8px"></span></div>';
     }
-    card.querySelector('.section-body').innerHTML =
+    area.innerHTML =
         '<div class="ocr-intro">'+intro+'</div>'+
         '<div class="ocr-status" id="ocrStatus">'+(_ocrStatusHtml||'')+'</div>'+
         '<div id="ocrImages">'+(_ocrImagesHtml||'')+'</div>'+
         cat5Html+editHtml;
-    if(!_autoOcrDone && lastUploadFile) autoFillNames();
 }
 
 // v6.6.5 把明細依 personList 順序排序（同一人的列聚在一起，順序與個人小計一致）
