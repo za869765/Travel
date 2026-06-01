@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>差旅明細整理系統 v6.10.0</title>
+    <title>差旅明細整理系統 v6.10.1</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -979,6 +979,12 @@
         .ocr-amt { font-size: 12px; color: #94a3b8; font-variant-numeric: tabular-nums; min-width: 38px; text-align: right; }
         .ocr-imgs { display: flex; flex-wrap: wrap; gap: 10px; margin: 6px 0 10px; }
         .ocr-img { max-height: 240px; max-width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; cursor: zoom-in; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+        .cat5-box { margin-top: 12px; border-top: 1px dashed #cbd5e1; padding-top: 10px; }
+        .cat5-wrap { position: relative; display: inline-block; max-width: 100%; }
+        .cat5-img { max-height: 320px; max-width: 100%; display: block; border: 1px solid #cbd5e1; border-radius: 6px; }
+        .cat5-mask { position: absolute; top: 0; bottom: 0; background: rgba(0,0,0,.85); pointer-events: none; }
+        .cat5-sliders { font-size: 12px; color: #475569; margin: 8px 0; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+        .cat5-sliders input { flex: 1; min-width: 120px; }
     </style>
 </head>
 <body>
@@ -986,7 +992,7 @@
     <header class="app-header">
         <div class="app-header-top">
             <h1>差旅明細整理系統</h1>
-            <span class="app-version">v6.10.0</span>
+            <span class="app-version">v6.10.1</span>
         </div>
         <div class="app-flow">
             會計室信件<span class="sep">›</span>旅費彙整表.xls<span class="sep">›</span>上傳<span class="sep">›</span>選衛生所<span class="sep">›</span>匯出 Excel
@@ -2589,6 +2595,7 @@ let lastUploadFile = null;     // 供重讀位元組抽內嵌圖
 let _autoOcrDone = false;
 let _ocrImagesHtml = '';       // 原圖預覽 HTML（跨重繪保留）
 let _ocrStatusHtml = '';       // 狀態訊息（跨重繪保留）
+let _cat5 = null;              // v6.10.1：cat5(含身分證)遮罩 widget 狀態 {url,maskL,maskR}
 
 function ocrSetStatus(m){ _ocrStatusHtml = m; const s=document.getElementById('ocrStatus'); if(s) s.innerHTML=m; }
 function bytesToB64(u8){ let s=''; const CH=0x8000; for(let i=0;i<u8.length;i+=CH) s+=String.fromCharCode.apply(null,u8.subarray(i,i+CH)); return btoa(s); }
@@ -2681,7 +2688,41 @@ async function autoFillNames(){
                 ocrSetStatus(msg+'　<b style="color:#b45309">姓名僅供參考，請對照上方原圖確認。</b>'); renderOcrPanel();
             } catch(e){ ocrSetStatus('辨識失敗：'+e.message+'（可對照上方原圖、在下方格子手動補）'); renderOcrPanel(); }
         }
+        /* cat5（含身分證號）：設定遮罩 widget，需使用者框住身分證欄再送，身分證不外傳 */
+        const cat5Imgs = sheetImgs['5'] || [];
+        if(cat5Imgs.length && files[cat5Imgs[0]]){
+            const p5=cat5Imgs[0], mime5=/\.png$/i.test(p5)?'image/png':'image/jpeg';
+            _cat5 = { url: URL.createObjectURL(new Blob([files[p5]],{type:mime5})), maskL:36, maskR:52 };
+            renderOcrPanel();
+        }
     }
+}
+
+/* v6.10.1：cat5 身分證遮罩 + 送辨識（身分證塗黑後才送、不外傳） */
+function updateCat5Mask(){
+    if(!_cat5) return;
+    const L=+((document.getElementById('cat5L')||{}).value||0), R=+((document.getElementById('cat5R')||{}).value||0);
+    _cat5.maskL=Math.min(L,R); _cat5.maskR=Math.max(L,R);
+    const m=document.getElementById('cat5Mask'); if(m){ m.style.left=_cat5.maskL+'%'; m.style.width=(_cat5.maskR-_cat5.maskL)+'%'; }
+}
+async function sendCat5(){
+    const setS=m=>{ const s=document.getElementById('cat5Status'); if(s) s.textContent=m; };
+    if(!_cat5){ setS('無 cat5 圖'); return; }
+    try {
+        setS('遮罩 + 辨識中…（約 30 秒）');
+        const img=new Image(); img.src=_cat5.url;
+        await new Promise((res,rej)=>{ img.onload=res; img.onerror=()=>rej(new Error('圖載入失敗')); });
+        const cv=document.createElement('canvas'); cv.width=img.naturalWidth; cv.height=img.naturalHeight;
+        const ctx=cv.getContext('2d'); ctx.drawImage(img,0,0);
+        ctx.fillStyle='#000'; ctx.fillRect(cv.width*_cat5.maskL/100, 0, cv.width*(_cat5.maskR-_cat5.maskL)/100, cv.height);
+        const b64=cv.toDataURL('image/jpeg',0.9).split(',')[1];
+        const office=(document.getElementById('officeSelect')||{}).value||'(全部)';
+        const rows=await backendOcr(b64,'image/jpeg', office+' / cat5(已遮身分證)');
+        const named=rows.filter(r=>r&&r.name&&String(r.name).trim());
+        const res=applyOcrRows(named);
+        ocrSetStatus('✅ cat5 辨識 '+rows.length+' 列、補上 '+res.filled+' 人。'+(res.flagged.length?' ⚠️ '+res.flagged.join('、'):'')+'　<b style="color:#b45309">姓名僅供參考，請對照原圖。</b>');
+        renderOcrPanel();
+    } catch(e){ setS('cat5 辨識失敗：'+e.message); }
 }
 
 /* 用 OCR 結果把「待補姓名的彙整表回補列」拆成逐人列（金額對不上彙整表者不套用） */
@@ -2755,11 +2796,18 @@ function renderOcrPanel(){
     const intro = remain.length
         ? '尚有 <b>'+remain.length+'</b> 筆待補姓名（'+remainOffices.length+' 所）。系統已自動辨識內嵌掃描圖；剩餘可對照下方原圖在格子內補。'
         : '已自動補上姓名（請對照原圖核對）。';
+    let cat5Html='';
+    if(_cat5 && resultData.allRecords.some(r=>r._backfill && !r.person && r._backfillSheet==='5')){
+        cat5Html='<div class="cat5-box"><div class="ocr-sub">⚠️ cat5（客語認證，含身分證號）：拖下方兩條桿子把「身分證字號」那一欄框起來→塗黑→送辨識（<b>身分證不外傳</b>）。</div>'+
+            '<div class="cat5-wrap"><img class="cat5-img" id="cat5Img" src="'+_cat5.url+'" alt="cat5"><div class="cat5-mask" id="cat5Mask" style="left:'+_cat5.maskL+'%;width:'+(_cat5.maskR-_cat5.maskL)+'%"></div></div>'+
+            '<div class="cat5-sliders">左緣 <input type="range" id="cat5L" min="0" max="100" value="'+_cat5.maskL+'" oninput="updateCat5Mask()"> 右緣 <input type="range" id="cat5R" min="0" max="100" value="'+_cat5.maskR+'" oninput="updateCat5Mask()"></div>'+
+            '<button class="btn btn-sm btn-primary" onclick="sendCat5()">🚫 送出辨識（已遮身分證）</button> <span id="cat5Status" class="ocr-status" style="display:inline-block;margin-left:8px"></span></div>';
+    }
     card.querySelector('.section-body').innerHTML =
         '<div class="ocr-intro">'+intro+'</div>'+
         '<div class="ocr-status" id="ocrStatus">'+(_ocrStatusHtml||'')+'</div>'+
         '<div id="ocrImages">'+(_ocrImagesHtml||'')+'</div>'+
-        editHtml;
+        cat5Html+editHtml;
     if(!_autoOcrDone && lastUploadFile) autoFillNames();
 }
 
