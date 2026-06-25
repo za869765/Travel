@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>差旅明細整理系統 v6.10.4</title>
+    <title>差旅明細整理系統 v6.10.5</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -998,7 +998,7 @@
     <header class="app-header">
         <div class="app-header-top">
             <h1>差旅明細整理系統</h1>
-            <span class="app-version">v6.10.4</span>
+            <span class="app-version">v6.10.5</span>
         </div>
         <div class="app-flow">
             會計室信件<span class="sep">›</span>旅費彙整表.xls<span class="sep">›</span>上傳<span class="sep">›</span>選衛生所<span class="sep">›</span>匯出 Excel
@@ -1574,13 +1574,22 @@ function safeFloat(v) {
     return 0;
 }
 
+// v6.10.5：判斷儲存格是否為「日期格式」(用 SheetJS 的格式碼判斷，需 cellNF:true 才有 cell.z)
+function isDateCell(cell) {
+    try { return !!(cell && cell.t === 'n' && cell.z && XLSX.SSF && XLSX.SSF.is_date(cell.z)); }
+    catch (e) { return false; }
+}
+
 function getRow(sheet, r) {
     const range = XLSX.utils.decode_range(sheet['!ref'] || 'A1');
     const row = [];
     for (let c = range.s.c; c <= range.e.c; c++) {
         const addr = XLSX.utils.encode_cell({ r, c });
         const cell = sheet[addr];
-        row.push(cell ? (cell.v !== undefined ? cell.v : '') : '');
+        if (!cell || cell.v === undefined) { row.push(''); continue; }
+        // v6.10.5：日期格式儲存格回傳顯示字串(.w，如「3月13日」)，避免備註讀到序號 46094
+        if (isDateCell(cell) && cell.w) { row.push(String(cell.w).trim()); continue; }
+        row.push(cell.v);
     }
     return row;
 }
@@ -1930,7 +1939,7 @@ function extractTravelTraffic(sheet, sheetName, fileLabel) {
 function extractTravelList(sheet, sheetName, fileLabel) {
     const nrows = sheetRows(sheet);
     const records = [];
-    let officeCol = 0, amountCol = 1, noteCol = 2, startRow = 3;
+    let officeCol = 0, amountCol = 1, noteCol = 2, personCol = -1, startRow = 3;
 
     for (let r = 0; r < Math.min(nrows, 5); r++) {
         const row = getRow(sheet, r);
@@ -1942,6 +1951,8 @@ function extractTravelList(sheet, sheetName, fileLabel) {
                 if (s.includes('衛生所') || s.includes('鄉鎮')) officeCol = c;
                 if (s.includes('金額')) amountCol = c;
                 if (s.includes('備註')) noteCol = c;
+                // v6.10.5：印領清冊有獨立「受領人/領受人」欄(如區里評比、化學防治加班)，姓名不在備註欄
+                if ((s.includes('受領人') || s.includes('領受人')) && personCol === -1) personCol = c;
             });
             break;
         }
@@ -1953,12 +1964,14 @@ function extractTravelList(sheet, sheetName, fileLabel) {
         let officeRaw = String(row[officeCol] || '').trim();
         const amount = safeFloat(row[amountCol]);
         const note = String(row[noteCol] || '').trim();
+        // v6.10.5：有受領人欄時姓名取自該欄；否則沿用備註欄(舊「旅費明細清單」格式姓名在備註)
+        const persons = personCol >= 0 ? String(row[personCol] || '').trim() : note;
         if (amount > 0 && officeRaw) {
             let office = officeRaw.replace(/^\d+\.?\s*/, '').trim() || officeRaw;
             if (!office.includes('衛生所') && office.includes('區')) office += '衛生所';
-            // v6.7.9:直接把整個 note 丟給 splitPersons(它會自己清日期+識別 N人 群組)
-            // _rawNote 保留原始 note,供 hover 追溯
-            pushSplitRecords(records, { office, sheet: sheetName, type: '差旅費', reason: note || sheetName, _rawNote: note, _sourceRow: r + 1 }, note, amount);
+            // v6.7.9:直接把整個 persons 丟給 splitPersons(它會自己清日期+識別 N人 群組)
+            // _rawNote 保留原始姓名來源,供 hover 追溯
+            pushSplitRecords(records, { office, sheet: sheetName, type: '差旅費', reason: note || sheetName, _rawNote: persons, _sourceRow: r + 1 }, persons, amount);
         }
     }
     return records;
@@ -2302,7 +2315,8 @@ function processFile(file) {
             setPct(40);
 
             const data = new Uint8Array(e.target.result);
-            const wb = XLSX.read(data, { type: 'array' });
+            // v6.10.5：cellNF 帶出 cell.z 數值格式碼，供 getRow 判斷日期格式（備註日期不再讀成序號）
+            const wb = XLSX.read(data, { type: 'array', cellNF: true });
 
             // v6.8.1 fix: 展開合併儲存格
             //   xls 內「衛生所/領受人」格式常見：李麗萍 cell 跨兩列、第二列領受人 cell 空
@@ -2322,7 +2336,7 @@ function processFile(file) {
                             if (r === m.s.r && c === m.s.c) continue;
                             var addr = XLSX.utils.encode_cell({ r: r, c: c });
                             if (!_ws[addr]) {
-                                _ws[addr] = { t: startCell.t, v: startCell.v, w: startCell.w };
+                                _ws[addr] = { t: startCell.t, v: startCell.v, w: startCell.w, z: startCell.z };
                             }
                         }
                     }
