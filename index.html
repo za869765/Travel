@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>差旅明細整理系統 v6.10.5</title>
+    <title>差旅明細整理系統 v6.10.6</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -998,7 +998,7 @@
     <header class="app-header">
         <div class="app-header-top">
             <h1>差旅明細整理系統</h1>
-            <span class="app-version">v6.10.5</span>
+            <span class="app-version">v6.10.6</span>
         </div>
         <div class="app-flow">
             會計室信件<span class="sep">›</span>旅費彙整表.xls<span class="sep">›</span>上傳<span class="sep">›</span>選衛生所<span class="sep">›</span>匯出 Excel
@@ -2226,6 +2226,12 @@ function extractExpenseReportSheet(sheet, sheetName) {
         const amount = safeFloat(row[amountCol]);
         if (!zCode || !/^z\d{2}$/i.test(zCode)) continue;
         if (amount <= 0) continue;
+        // v6.10.6：金額右側的無標題欄若含中文姓名（如「洪大周、周千惠」）→ 拆分給個人，不再整筆待補
+        const personRaw = String(row[amountCol + 1] || '').trim();
+        if (/[\u4e00-\u9fff]/.test(personRaw)) {
+            pushSplitRecords(records, { office, sheet: purpose || sheetName, type: feeType, reason: purpose, _rawNote: `${zCode} ${office} ${amount} 元 ${personRaw}`, _sourceRow: r + 1 }, personRaw, amount);
+            continue;
+        }
         records.push({ office, person: '', amount, sheet: purpose || sheetName, type: feeType, reason: purpose, _srcAmount: amount, _rawNote: `z-code 彙總列:${zCode} ${office} ${amount} 元 (明細分散於其他分頁)`, _sourceRow: r + 1 });
     }
 
