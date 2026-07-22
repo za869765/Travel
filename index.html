@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>差旅明細整理系統 v6.10.7</title>
+    <title>差旅明細整理系統 v7.1.7</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -998,7 +998,7 @@
     <header class="app-header">
         <div class="app-header-top">
             <h1>差旅明細整理系統</h1>
-            <span class="app-version">v6.10.7</span>
+            <span class="app-version">v7.1.7</span>
         </div>
         <div class="app-flow">
             會計室信件<span class="sep">›</span>旅費彙整表.xls<span class="sep">›</span>上傳<span class="sep">›</span>選衛生所<span class="sep">›</span>匯出 Excel
@@ -2705,7 +2705,7 @@ async function autoFillNames(){
     if(files){
         let sheetImgs={}; try { sheetImgs = mapSheetImages(files); } catch(e){}
         /* cat1 + cat5：內嵌「人名掃描圖」都自動送後端 Gemini pro 辨識（cat4 由 Excel 處理）
-           v6.10.7：cat4 純掃描檔（分頁4無儲存格、Y:AA 拆不出）時，其掃描圖也送 OCR */
+           v7.1.7（原 v6.10.7）：cat4 純掃描檔（分頁4無儲存格、Y:AA 拆不出）時，其掃描圖也送 OCR */
         const ocrImgs = [...(sheetImgs['1']||[]), ...(cat4FromExcel ? [] : (sheetImgs['4']||[])), ...(sheetImgs['5']||[])];
         const office = (document.getElementById('officeSelect')||{}).value || '(全部)';
         if(ocrImgs.length) showOcrOverlay('辨識內嵌掃描圖中…（共 '+ocrImgs.length+' 張）');
