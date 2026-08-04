@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>差旅明細整理系統 v7.1.7</title>
+    <title>差旅明細整理系統 v7.1.8</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -998,7 +998,7 @@
     <header class="app-header">
         <div class="app-header-top">
             <h1>差旅明細整理系統</h1>
-            <span class="app-version">v7.1.7</span>
+            <span class="app-version">v7.1.8</span>
         </div>
         <div class="app-flow">
             會計室信件<span class="sep">›</span>旅費彙整表.xls<span class="sep">›</span>上傳<span class="sep">›</span>選衛生所<span class="sep">›</span>匯出 Excel
@@ -1377,7 +1377,9 @@ function splitPersons(personStr, totalAmount) {
     // v6.7.9 bug #38：增加 3 位民國年（如 114/3/5、115.1.20）；含 . 分隔符變體
     text = text.replace(/\b\d{4}[\/.]\d{1,2}[\/.]\d{1,2}\b/g, ' ');
     text = text.replace(/(?<!\d)\d{3}[\/.]\d{1,2}[\/.]\d{1,2}(?!\d)/g, ' ');
-    text = text.replace(/(?<!\d)\d{1,2}\/\d{1,2}(?!\d)/g, ' ');
+    // v7.1.8：斜線日期後接頓號的「日」序列一併清除 — 「5/19、20、21劉季平」「3/20、24、25、27、4/08」
+    //   接續數字限 1-31（避免誤吃真金額），且後面不能接 數字 / 斜線 / 月人次元
+    text = text.replace(/(?<!\d)\d{1,2}\/\d{1,2}(?:\s*[、,，]\s*(?:3[01]|[012]?\d)(?![\d\/月人次元]))*(?!\d)/g, ' ');
 
     // (1) 正規化金額:千分位 , 與 "元" 字
     text = text.replace(/\$\s*(\d{1,3}(?:,\d{3})+(?:\.\d+)?)\s*元?/g, (_, n) => '$' + n.replace(/,/g, ''));
@@ -1386,13 +1388,15 @@ function splitPersons(personStr, totalAmount) {
     // (1b) 保護「NAMES$X*N人」群組,用占位符替換
     const groupMap = {};
     let gIdx = 0;
-    text = text.replace(/([\u4e00-\u9fff][\u4e00-\u9fff、，,＋+\s]*?)\s*\$\s*(\d+(?:\.\d+)?)\s*\*\s*(\d+)\s*人?/g, (_, names, amt, n) => {
+    // v7.1.8：捕捉單位 (人|次)；「*N次」=同一人 N 趟。後接金額鏈（如「$298*3次+$254」）時留給 (1c) 處理
+    text = text.replace(/([\u4e00-\u9fff][\u4e00-\u9fff、，,＋+\s]*?)\s*\$\s*(\d+(?:\.\d+)?)\s*\*\s*(\d+)\s*(人|次)?(?!\s*[人次]|\s*[+＋]\s*\$)/g, (_, names, amt, n, unit) => {
         const key = `\u0000G${gIdx++}\u0000`;
         groupMap[key] = {
             type: 'multi-name',
             names: names.trim().split(/[、,，+＋]/).map(s => s.trim()).filter(Boolean),
             perAmount: parseFloat(amt),
-            count: parseInt(n, 10) || 1
+            count: parseInt(n, 10) || 1,
+            unit: unit || ''
         };
         return key;
     });
@@ -1402,11 +1406,16 @@ function splitPersons(personStr, totalAmount) {
     //       若不保護，split 後 ['呂佳卉$215', '$157']，第二筆無姓名 → 違反 feedback_travel_no_name_loss
     //   保護後展開為「呂佳卉 $215」+「呂佳卉 $157」兩筆同名
     text = text.replace(
-        /([\u4e00-\u9fff]{2,4})\s*\$\s*(\d+(?:\.\d+)?(?:\s*[+＋]\s*\$\s*\d+(?:\.\d+)?)+)/g,
+        /([\u4e00-\u9fff]{2,4})\s*\$\s*(\d+(?:\.\d+)?(?:\s*\*\s*\d+)?\s*次?(?:\s*[+＋]\s*\$\s*\d+(?:\.\d+)?(?:\s*\*\s*\d+)?\s*次?)+)/g,
         (match, name, amountsStr) => {
-            const amts = amountsStr.split(/\s*[+＋]\s*/)
-                .map(a => parseFloat(a.replace(/[\$\s]/g, '')))
-                .filter(n => !isNaN(n));
+            // v7.1.8：容許「$171*2次」項 — *N 展開為 N 筆
+            const amts = [];
+            amountsStr.split(/\s*[+＋]\s*/).forEach(t => {
+                const tm = t.replace(/[\$\s次]/g, '').match(/^(\d+(?:\.\d+)?)(?:\*(\d+))?$/);
+                if (!tm) return;
+                const rep = tm[2] ? parseInt(tm[2], 10) : 1;
+                for (let k = 0; k < rep; k++) amts.push(parseFloat(tm[1]));
+            });
             if (amts.length < 2) return match;
             const key = `\u0000P${gIdx++}\u0000`;
             groupMap[key] = {
@@ -1427,22 +1436,38 @@ function splitPersons(personStr, totalAmount) {
         if (!part) continue;
 
         // (A) 群組占位符 → 展開成多筆
-        if ((part.startsWith('\u0000G') || part.startsWith('\u0000P')) && groupMap[part]) {
-            const g = groupMap[part];
-            // v6.8.0：multi-amount (姓名$X+$Y+...$Z 同人多筆) 分支
-            if (g.type === 'multi-amount') {
-                g.amounts.forEach(amt => results.push({ name: g.name, amount: amt }));
-                if (typeof addLog === 'function') addLog(`"${g.name}$${g.amounts.join('+$')}" 展開為 ${g.amounts.length} 筆同名`);
+        // v7.1.8：容錯 — 佔位符黏了殘渣（日期殘字、「次」等）也要認得，殘渣丟棄，不再整組蒸發
+        const phKeys = part.match(/\u0000[GP]\d+\u0000/g);
+        if (phKeys) {
+            const residue = part.replace(/\u0000[GP]\d+\u0000/g, '').trim();
+            for (const key of phKeys) {
+                const g = groupMap[key];
+                if (!g) continue;
+                if (g.type === 'multi-amount') {
+                    // v6.8.0：multi-amount (姓名$X+$Y+...$Z 同人多筆) 分支
+                    g.amounts.forEach(amt => results.push({ name: g.name, amount: amt }));
+                    if (typeof addLog === 'function') addLog(`"${g.name}$${g.amounts.join('+$')}" 展開為 ${g.amounts.length} 筆同名`);
+                } else if (g.unit === '次' && g.names.length === 1) {
+                    // v7.1.8：*N次 = 同一人 N 趟，每筆都掛名
+                    for (let i = 0; i < g.count; i++) results.push({ name: g.names[0], amount: g.perAmount });
+                    if (typeof addLog === 'function') addLog(`"${g.names[0]}$${g.perAmount}*${g.count}次" 展開為 ${g.count} 筆同名`);
+                } else {
+                    if (g.names.length > 0) {
+                        g.names.forEach(nm => results.push({ name: nm, amount: g.perAmount }));
+                        for (let i = g.names.length; i < g.count; i++) results.push({ name: '', amount: g.perAmount });
+                    } else {
+                        for (let i = 0; i < g.count; i++) results.push({ name: '', amount: g.perAmount });
+                    }
+                    if (typeof addLog === 'function') addLog(`"${g.names.join('、')}$${g.perAmount}*${g.count}人" 展開為 ${g.count} 筆`);
+                }
+            }
+            // v7.1.8：殘渣含姓名/金額（2字中文、$、3位數）→ 落回下方一般規則解析，避免整段靜默遺失；純日期殘字才丟棄
+            if (residue && (/[\u4e00-\u9fff]{2}/.test(residue) || /[\$]|\d{3}/.test(residue))) {
+                part = residue;
+            } else {
+                if (residue && typeof addLog === 'function') addLog(`佔位符旁殘渣忽略:"${residue}"`);
                 continue;
             }
-            if (g.names.length > 0) {
-                g.names.forEach(nm => results.push({ name: nm, amount: g.perAmount }));
-                for (let i = g.names.length; i < g.count; i++) results.push({ name: '', amount: g.perAmount });
-            } else {
-                for (let i = 0; i < g.count; i++) results.push({ name: '', amount: g.perAmount });
-            }
-            if (typeof addLog === 'function') addLog(`"${g.names.join('、')}$${g.perAmount}*${g.count}人" 展開為 ${g.count} 筆`);
-            continue;
         }
 
         let m;
@@ -2705,7 +2730,8 @@ async function autoFillNames(){
     if(files){
         let sheetImgs={}; try { sheetImgs = mapSheetImages(files); } catch(e){}
         /* cat1 + cat5：內嵌「人名掃描圖」都自動送後端 Gemini pro 辨識（cat4 由 Excel 處理）
-           v7.1.7（原 v6.10.7）：cat4 純掃描檔（分頁4無儲存格、Y:AA 拆不出）時，其掃描圖也送 OCR */
+           v7.1.7（原 v6.10.7）：cat4 純掃描檔（分頁4無儲存格、Y:AA 拆不出）時，其掃描圖也送 OCR
+           v7.1.8：splitPersons 三修 — 日期頓號日序列清除（5/19、20、21）、*N次=同人N趟、佔位符黏殘渣容錯（修 866.5 小數與三方差 15 元） */
         const ocrImgs = [...(sheetImgs['1']||[]), ...(cat4FromExcel ? [] : (sheetImgs['4']||[])), ...(sheetImgs['5']||[])];
         const office = (document.getElementById('officeSelect')||{}).value || '(全部)';
         if(ocrImgs.length) showOcrOverlay('辨識內嵌掃描圖中…（共 '+ocrImgs.length+' 張）');
