@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>差旅明細整理系統 v7.1.8</title>
+    <title>差旅明細整理系統 v7.1.9</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -998,7 +998,7 @@
     <header class="app-header">
         <div class="app-header-top">
             <h1>差旅明細整理系統</h1>
-            <span class="app-version">v7.1.8</span>
+            <span class="app-version">v7.1.9</span>
         </div>
         <div class="app-flow">
             會計室信件<span class="sep">›</span>旅費彙整表.xls<span class="sep">›</span>上傳<span class="sep">›</span>選衛生所<span class="sep">›</span>匯出 Excel
@@ -1840,9 +1840,10 @@ function extractOvertimeSummary(sheet, sheetName, fileLabel) {
         const t = getRow(sheet, r).join('');
         if (t.includes('用途')) { purpose = t.replace(/用途[：:]/, '').trim(); break; }
     }
-    let feeType = '加班費';
-    if (purpose.includes('差旅') || purpose.includes('旅費')) feeType = '差旅費';
-    else if (purpose.includes('誤餐') || purpose.includes('醫護') || purpose.includes('宣導') || purpose.includes('郵簡')) feeType = '其他費用';
+    // v7.1.9: 與 extractExpenseReportSheet 同規則——含「加班」才是加班費，其餘非差旅用途一律其他費用（修流感疫苗冰箱發電機維修費被誤標加班費）
+    let feeType = '其他費用';
+    if (purpose.includes('加班')) feeType = '加班費';
+    else if (purpose.includes('交通') || purpose.includes('差旅') || purpose.includes('旅費') || purpose.includes('訪視') || purpose.includes('都治') || purpose.includes('檢討')) feeType = '差旅費';
 
     // 智慧偵測欄位
     let officeCol = 1, amountCol = 2, personCol = -1, startRow = 2;
