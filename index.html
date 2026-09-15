@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>差旅明細整理系統 v7.1.9</title>
+    <title>差旅明細整理系統 v7.2.1</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -998,7 +998,7 @@
     <header class="app-header">
         <div class="app-header-top">
             <h1>差旅明細整理系統</h1>
-            <span class="app-version">v7.1.9</span>
+            <span class="app-version">v7.2.1</span>
         </div>
         <div class="app-flow">
             會計室信件<span class="sep">›</span>旅費彙整表.xls<span class="sep">›</span>上傳<span class="sep">›</span>選衛生所<span class="sep">›</span>匯出 Excel
@@ -2150,9 +2150,12 @@ function extractExpenseReportSheet(sheet, sheetName) {
     // 從前5列 col A 取用途
     let purpose = sheetName;
     for (let r = 0; r < Math.min(nrows, 5); r++) {
-        const val = String(getRow(sheet, r)[0] || '').trim();
+        const row = getRow(sheet, r);
+        const val = String(row[0] || '').trim();
         if (val.startsWith('用途')) {
             purpose = val.replace(/^用途[：:]\s*/, '').trim();
+            // v7.2.1：「用途：」單獨一格、內容在右邊下一格（1150910 檔分頁1）
+            if (!purpose) purpose = String(row.slice(1).find(v => String(v || '').trim()) || '').trim();
             break;
         }
     }
@@ -2165,23 +2168,32 @@ function extractExpenseReportSheet(sheet, sheetName) {
     }
 
     // === 策略1：右側面板（cols F+）找 衛生所|領受人 子標題 ===
+    // v7.2.1：標題欄位置不再寫死 F/G——右側面板起始欄會因版面而移（1150910 檔分頁1 在 H/I），
+    //         改掃整列找「衛生所」且緊鄰右側 1~2 格是「領受人/姓名」；金額標題無「金額」時接受「總計/合計」
     if (ncols >= 9) {
         let startRow = -1;
         let officeCol = 5, personCol = 6, amountCol = 8, noteCol = 10;
 
         for (let r = 0; r < Math.min(nrows, 10); r++) {
             const row = getRow(sheet, r);
-            const colF = String(row[5] || '').replace(/\s/g, '').trim();
-            const colG = String(row[6] || '').replace(/\s/g, '').trim();
-            if ((colF === '衛生所' || colF.includes('所別')) && (colG === '領受人' || colG === '姓名')) {
+            const texts = row.map(v => String(v || '').replace(/\s/g, '').trim());
+            let oc = -1, pc = -1;
+            for (let c = 3; c < texts.length - 1; c++) {
+                if (texts[c] !== '衛生所' && !texts[c].includes('所別')) continue;
+                const p = [c + 1, c + 2].find(k => texts[k] === '領受人' || texts[k] === '姓名');
+                if (p !== undefined) { oc = c; pc = p; break; }
+            }
+            if (oc >= 0) {
                 startRow = r + 1;
-                for (let c = 5; c < Math.min(ncols, 12); c++) {
-                    const s = String(row[c] || '').replace(/\s/g, '').trim();
-                    if (s === '衛生所' || s.includes('所別')) officeCol = c;
-                    if (s === '領受人' || s === '姓名') personCol = c;
-                    if (s === '金額') amountCol = c;
+                officeCol = oc; personCol = pc;
+                amountCol = -1; noteCol = ncols;
+                for (let c = pc + 1; c < Math.min(texts.length, pc + 8); c++) {
+                    const s = texts[c];
+                    if (s === '金額') { amountCol = c; }
+                    else if (amountCol < 0 && (s === '總計' || s === '合計')) amountCol = c;
                     if (s.includes('備註')) noteCol = c;
                 }
+                if (amountCol < 0) amountCol = pc + 2;
                 break;
             }
         }
