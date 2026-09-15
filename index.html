@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>差旅明細整理系統 v7.2.3</title>
+    <title>差旅明細整理系統 v7.2.4</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -998,7 +998,7 @@
     <header class="app-header">
         <div class="app-header-top">
             <h1>差旅明細整理系統</h1>
-            <span class="app-version">v7.2.3</span>
+            <span class="app-version">v7.2.4</span>
         </div>
         <div class="app-flow">
             會計室信件<span class="sep">›</span>旅費彙整表.xls<span class="sep">›</span>上傳<span class="sep">›</span>選衛生所<span class="sep">›</span>匯出 Excel
@@ -2787,6 +2787,7 @@ async function autoFillNames(){
                     const named = rows.filter(r=>r && r.name && String(r.name).trim());
                     const res = applyOcrRows(named);
                     let msg = '✅ 辨識 '+rows.length+' 列、自動補上 '+res.filled+' 人。';
+                    if(res.guessed && res.guessed.length) msg += ' 🔁 掃描件所名疑印錯、依金額推定：'+res.guessed.join('、')+'（請核對）';
                     if(res.flagged.length) msg += ' ⚠️ '+res.flagged.length+' 所金額對不上彙整表、未套用：'+res.flagged.join('、');
                     ocrSetStatus(msg+'　<b style="color:#b45309">姓名僅供參考，請對照上方原圖確認。</b>'); renderOcrPanel();
                 } catch(e){ ocrSetStatus('辨識失敗：'+e.message+'（可對照上方原圖、在下方格子手動補）'); renderOcrPanel(); }
@@ -2803,28 +2804,46 @@ function applyOcrRows(ocrRows){
     const byCode = r => { const n=parseInt(r.code,10); const o=(n>=1&&n<=37)?OFFICE_CODE_MAP['z'+String(n).padStart(2,'0')]:''; return o||byName(r); };
     const hasCode = ocrRows.some(r=>parseInt(r.code,10)>=1);
     const a = _matchOcrRows(ocrRows, byName);
-    if(!hasCode){ rerenderWithRecords(a.records); return { filled:a.filled, flagged:a.flagged }; }
+    if(!hasCode){ rerenderWithRecords(a.records); return { filled:a.filled, flagged:a.flagged, guessed:a.guessed }; }
     const b = _matchOcrRows(ocrRows, byCode);
     const best = (b.filled>a.filled) ? b : a;
     rerenderWithRecords(best.records);
-    return { filled:best.filled, flagged:best.flagged };
+    return { filled:best.filled, flagged:best.flagged, guessed:best.guessed };
 }
 function _matchOcrRows(ocrRows, officeOf){
     const records = resultData.allRecords.slice();
     const byOffice = {};
     ocrRows.forEach(r=>{ const o=officeOf(r); const a=parseFloat(String(r.amount).replace(/,/g,''))||0; if(!o||!a) return; (byOffice[o]=byOffice[o]||[]).push({name:String(r.name||'').trim(), amount:a}); });
-    let filled=0; const flagged=[]; let oid=Date.now();
-    Object.keys(byOffice).forEach(office=>{
-        const people=byOffice[office];
-        const sum=people.reduce((s,p)=>s+p.amount,0);
-        const idx=records.findIndex(r=>r._backfill && !r.person && r.office===office && Math.abs((r.amount||0)-sum)<0.5);
-        if(idx<0){ flagged.push(office.replace('區衛生所','').replace('衛生所','')+'(OCR加總'+sum+')'); return; }
+    let filled=0; const flagged=[]; const guessed=[]; let oid=Date.now();
+    const short = o => o.replace('區衛生所','').replace('衛生所','');
+    const applyTo = (idx, office, people) => {
         const base=records[idx];
         const split=people.map(p=>({ office, person:p.name, amount:p.amount, sheet:base.sheet, type:base.type, reason:base.reason, _srcAmount:p.amount, _backfill:true, _ocr:true, _ocrId:'o'+(oid++) }));
         records.splice(idx,1,...split);
         filled+=people.length;
+    };
+    const orphan=[];   // OCR 群組的衛生所在回補列裡根本不存在（掃描件把所名印錯）
+    Object.keys(byOffice).forEach(office=>{
+        const people=byOffice[office];
+        const sum=people.reduce((s,p)=>s+p.amount,0);
+        const idx=records.findIndex(r=>r._backfill && !r.person && r.office===office && Math.abs((r.amount||0)-sum)<0.5);
+        if(idx<0){
+            if(!records.some(r=>r._backfill && r.office===office)) orphan.push({office, people, sum});
+            else flagged.push(short(office)+'(OCR加總'+sum+')');
+            return;
+        }
+        applyTo(idx, office, people);
     });
-    return { records, filled, flagged };
+    // v7.2.4：所名印錯的群組——加總恰等於「唯一一筆」尚無名字的回補列時，依金額推定套到該所
+    //         （1150910 分頁5 掃描件 36/37 三列印「安南」，彙整表只有安平 180）
+    orphan.forEach(({office, people, sum})=>{
+        const cands=[]; records.forEach((r,i)=>{ if(r._backfill && !r.person && Math.abs((r.amount||0)-sum)<0.5) cands.push(i); });
+        if(cands.length!==1){ flagged.push(short(office)+'(OCR加總'+sum+')'); return; }
+        const target=records[cands[0]].office;
+        applyTo(cands[0], target, people);
+        guessed.push(short(office)+'→'+short(target)+'('+sum+')');
+    });
+    return { records, filled, flagged, guessed };
 }
 
 /* 套用使用者對 OCR 名字的手動修改後重算 */
