@@ -22,7 +22,8 @@ export async function onRequestPost(context) {
         const model = env.GEMINI_MODEL || 'gemini-2.5-pro';
         const prompt =
             '這是台南市政府衛生局的差旅費/補助掃描清單表。逐列辨識，回傳純 JSON 陣列，' +
-            '每列物件鍵：office(衛生所/單位全名，如「佳里區衛生所」)、name(領受人/姓名)、amount(金額數字)。' +
+            '每列物件鍵：office(衛生所/單位全名，如「佳里區衛生所」)、name(領受人/姓名)、amount(金額數字)、' +
+            'code(該列最左「編號」欄的數字，1~37；表上沒有編號欄就省略此鍵)。' +
             '姓名務必逐字辨識、不可漏字或縮寫；若該表沒有姓名欄就回空陣列。' +
             '不要「合計/總計/以下空白/承辦人」等列。不要輸出身分證字號。只回純 JSON 陣列。';
         const gReq = {

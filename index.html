@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>差旅明細整理系統 v7.2.2</title>
+    <title>差旅明細整理系統 v7.2.3</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -998,7 +998,7 @@
     <header class="app-header">
         <div class="app-header-top">
             <h1>差旅明細整理系統</h1>
-            <span class="app-version">v7.2.2</span>
+            <span class="app-version">v7.2.3</span>
         </div>
         <div class="app-flow">
             會計室信件<span class="sep">›</span>旅費彙整表.xls<span class="sep">›</span>上傳<span class="sep">›</span>選衛生所<span class="sep">›</span>匯出 Excel
@@ -2270,6 +2270,11 @@ function extractExpenseReportSheet(sheet, sheetName, summaryPurpose) {
         let amount = safeFloat(row[amountCol]);
         if (!zCode || !/^z\d{2}$/i.test(zCode)) continue;
         let personRaw = String(row[personCol >= 0 ? personCol : amountCol + 1] || '').trim();
+        // v7.2.3：「金額」欄本身寫「周瑞鈴1092元」（1150910 分頁6 東區）→ 把金額格文字當姓名格處理
+        if (amount <= 0 && !personRaw) {
+            const amtText = String(row[amountCol] || '').trim();
+            if (/[一-鿿]/.test(amtText) && /\d\s*元/.test(amtText)) personRaw = amtText;
+        }
         if (amount <= 0 && /\d\s*元/.test(personRaw)) {
             let sum = 0;
             personRaw = personRaw.replace(/(\d[\d,]*)\s*元/g, (_, n) => { const v = parseFloat(n.replace(/,/g, '')); sum += v; return '$' + v; });
@@ -2791,10 +2796,23 @@ async function autoFillNames(){
 }
 
 /* 用 OCR 結果把「待補姓名的彙整表回補列」拆成逐人列（金額對不上彙整表者不套用） */
+// v7.2.3：掃描件的衛生所名可能印錯（1150910 分頁5 編號 37 三列印成「安南」，實為安平），
+//         OCR 另回傳 code(編號欄)；依「衛生所名」與「編號→z-code」各對照一次，採命中較多者
 function applyOcrRows(ocrRows){
+    const byName = r => resolveOffice(String(r.office||''));
+    const byCode = r => { const n=parseInt(r.code,10); const o=(n>=1&&n<=37)?OFFICE_CODE_MAP['z'+String(n).padStart(2,'0')]:''; return o||byName(r); };
+    const hasCode = ocrRows.some(r=>parseInt(r.code,10)>=1);
+    const a = _matchOcrRows(ocrRows, byName);
+    if(!hasCode){ rerenderWithRecords(a.records); return { filled:a.filled, flagged:a.flagged }; }
+    const b = _matchOcrRows(ocrRows, byCode);
+    const best = (b.filled>a.filled) ? b : a;
+    rerenderWithRecords(best.records);
+    return { filled:best.filled, flagged:best.flagged };
+}
+function _matchOcrRows(ocrRows, officeOf){
     const records = resultData.allRecords.slice();
     const byOffice = {};
-    ocrRows.forEach(r=>{ const o=resolveOffice(String(r.office||'')); const a=parseFloat(String(r.amount).replace(/,/g,''))||0; if(!o||!a) return; (byOffice[o]=byOffice[o]||[]).push({name:String(r.name||'').trim(), amount:a}); });
+    ocrRows.forEach(r=>{ const o=officeOf(r); const a=parseFloat(String(r.amount).replace(/,/g,''))||0; if(!o||!a) return; (byOffice[o]=byOffice[o]||[]).push({name:String(r.name||'').trim(), amount:a}); });
     let filled=0; const flagged=[]; let oid=Date.now();
     Object.keys(byOffice).forEach(office=>{
         const people=byOffice[office];
@@ -2806,8 +2824,7 @@ function applyOcrRows(ocrRows){
         records.splice(idx,1,...split);
         filled+=people.length;
     });
-    rerenderWithRecords(records);
-    return { filled, flagged };
+    return { records, filled, flagged };
 }
 
 /* 套用使用者對 OCR 名字的手動修改後重算 */
