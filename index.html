@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>差旅明細整理系統 v7.2.4</title>
+    <title>差旅明細整理系統 v7.2.5</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -833,6 +833,36 @@
             font-weight: 600;
         }
 
+        /* v7.2.5: 「無姓名」卡片浮標——hover 預覽清單＋原始列資料，點擊釘住 */
+        .stat-col.unk-trigger { cursor: pointer; }
+        .stat-col.unk-trigger .stat-unit::after { content: ' · 滑過看清單'; opacity: .7; }
+        .unk-pop {
+            position: fixed;
+            z-index: 9998;
+            width: min(560px, calc(100vw - 16px));
+            max-height: min(60vh, 520px);
+            overflow-y: auto;
+            padding: 10px 12px;
+            background: var(--ink-7);
+            color: var(--ink-1);
+            border-radius: var(--r-2);
+            box-shadow: var(--sh-3);
+            font-family: var(--font-ui);
+            font-size: 13px;
+            line-height: 1.5;
+            display: none;
+        }
+        .unk-pop.show { display: block; }
+        .unk-pop .unk-head {
+            display: flex; justify-content: space-between; align-items: baseline;
+            color: var(--c-amber-soft); font-size: 12px; margin-bottom: 8px;
+        }
+        .unk-pop .unk-item { padding: 8px 0; border-top: 1px solid rgba(255,255,255,.12); }
+        .unk-pop .unk-meta { color: var(--ink-0); font-weight: 600; }
+        .unk-pop .unk-amt { color: var(--c-amber); font-family: var(--font-mono, monospace); }
+        .unk-pop .unk-label { color: var(--c-amber-soft); font-size: 11px; opacity: .85; margin-right: 6px; }
+        .unk-pop .unk-raw { white-space: pre-wrap; word-break: break-word; margin-top: 2px; }
+
         /* Badge 華麗化 */
         .badge-recon.ok {
             background: var(--grad-ok);
@@ -998,7 +1028,7 @@
     <header class="app-header">
         <div class="app-header-top">
             <h1>差旅明細整理系統</h1>
-            <span class="app-version">v7.2.4</span>
+            <span class="app-version">v7.2.5</span>
         </div>
         <div class="app-flow">
             會計室信件<span class="sep">›</span>旅費彙整表.xls<span class="sep">›</span>上傳<span class="sep">›</span>選衛生所<span class="sep">›</span>匯出 Excel
@@ -1193,6 +1223,80 @@ let resultData = null;
     window.addEventListener('scroll', () => { if (tipEl) tipEl.classList.remove('show'); }, { passive: true });
 })();
 
+// v7.2.5: 「無姓名」卡片浮標——hover 顯示待補清單＋原始 workbook 該列資料；點擊釘住可捲動，點外部關閉
+(function setupUnknownPop(){
+    let pop = null, pinned = false, hideTimer = null;
+    const esc = s => String(s == null ? '' : s)
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    let rowCache = {}, cacheWb = null;
+    function origRow(sheet, rowNo){
+        if (!resultData || !resultData.wb || !rowNo) return '';
+        if (cacheWb !== resultData.wb) { rowCache = {}; cacheWb = resultData.wb; }
+        const wb = resultData.wb;
+        // 記錄的 sheet 是 cleanSheetName 後的名稱，反查原始分頁
+        const realName = wb.Sheets[sheet] ? sheet : wb.SheetNames.find(n => cleanSheetName(n) === sheet);
+        const ws = realName && wb.Sheets[realName];
+        if (!ws) return '';
+        sheet = realName;
+        if (!rowCache[sheet]) rowCache[sheet] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false });
+        const row = rowCache[sheet][rowNo - 1] || [];
+        return row.map(v => String(v).trim()).filter(Boolean).join(' ｜ ');
+    }
+    function build(){
+        const list = (resultData && resultData.allRecords || []).filter(r => !r.person);
+        const items = list.map((r, i) => {
+            const rowNo = r.sourceRow || r._sourceRow;
+            const orig = origRow(r.sheet, rowNo);
+            return `<div class="unk-item">
+                <div><span class="unk-meta">${i + 1}. ${esc(r.office)}</span>　${esc(r.type)}　<span class="unk-amt">$${Number(r.amount || 0).toLocaleString()}</span></div>
+                <div><span class="unk-label">來源</span>分頁「${esc(r.sheet)}」${rowNo ? `第 ${rowNo} 列` : ''}</div>
+                ${r.reason ? `<div><span class="unk-label">備註</span>${esc(r.reason)}</div>` : ''}
+                ${r._rawNote ? `<div class="unk-raw"><span class="unk-label">解析原文</span>${esc(r._rawNote)}</div>` : ''}
+                ${orig ? `<div class="unk-raw"><span class="unk-label">原始列</span>${esc(orig)}</div>` : ''}
+            </div>`;
+        }).join('');
+        return `<div class="unk-head"><span>無姓名待補 ${list.length} 筆</span><span>${pinned ? '已釘住 · 點外部關閉' : '點卡片可釘住'}</span></div>${items}`;
+    }
+    function show(col){
+        clearTimeout(hideTimer);
+        if (!pop) {
+            pop = document.createElement('div');
+            pop.className = 'unk-pop';
+            pop.addEventListener('mouseenter', () => clearTimeout(hideTimer));
+            pop.addEventListener('mouseleave', () => { if (!pinned) hideSoon(); });
+            document.body.appendChild(pop);
+        }
+        pop.innerHTML = build();
+        pop.classList.add('show');
+        const rc = col.getBoundingClientRect();
+        const w = pop.offsetWidth, h = pop.offsetHeight;
+        let x = Math.min(rc.right - w, window.innerWidth - w - 8);
+        if (x < 8) x = 8;
+        let y = rc.bottom + 6;
+        if (y + h > window.innerHeight - 8) y = Math.max(8, rc.top - h - 6);
+        pop.style.left = x + 'px';
+        pop.style.top = y + 'px';
+    }
+    function hideSoon(){ hideTimer = setTimeout(() => { if (pop) pop.classList.remove('show'); }, 180); }
+    document.addEventListener('mouseover', ev => {
+        const col = ev.target.closest && ev.target.closest('.unk-trigger');
+        if (col && !pinned && !(pop && pop.classList.contains('show'))) show(col);
+    });
+    document.addEventListener('mouseout', ev => {
+        const col = ev.target.closest && ev.target.closest('.unk-trigger');
+        if (!col || pinned) return;
+        const to = ev.relatedTarget;
+        if (to && (col.contains(to) || (pop && pop.contains(to)))) return;
+        hideSoon();
+    });
+    document.addEventListener('click', ev => {
+        const col = ev.target.closest && ev.target.closest('.unk-trigger');
+        if (col) { pinned = !pinned; show(col); if (!pinned) hideSoon(); return; }
+        if (pinned && pop && !pop.contains(ev.target)) { pinned = false; pop.classList.remove('show'); }
+    });
+    window.addEventListener('scroll', () => { if (pop && !pinned) pop.classList.remove('show'); }, { passive: true });
+})();
+
 // ===== LiveNum count-up 模組 =====
 const LiveNum = (function(){
     const ease = t => 1 - Math.pow(1-t, 3);
@@ -1379,7 +1483,8 @@ function splitPersons(personStr, totalAmount) {
     text = text.replace(/(?<!\d)\d{3}[\/.]\d{1,2}[\/.]\d{1,2}(?!\d)/g, ' ');
     // v7.1.8：斜線日期後接頓號的「日」序列一併清除 — 「5/19、20、21劉季平」「3/20、24、25、27、4/08」
     //   接續數字限 1-31（避免誤吃真金額），且後面不能接 數字 / 斜線 / 月人次元
-    text = text.replace(/(?<!\d)\d{1,2}\/\d{1,2}(?:\s*[、,，]\s*(?:3[01]|[012]?\d)(?![\d\/月人次元]))*(?!\d)/g, ' ');
+    // v7.2.5：日與序列項可帶「-16 / ~16」區間 — 「7/15-16、31黃瓊蓮$149+$149+$350」（原本留下「-16」被拆成 $0 無姓名列）
+    text = text.replace(/(?<!\d)\d{1,2}\/\d{1,2}(?:\s*[-~～]\s*(?:3[01]|[012]?\d)(?![\d\/]))?(?:\s*[、,，]\s*(?:3[01]|[012]?\d)(?:\s*[-~～]\s*(?:3[01]|[012]?\d))?(?![\d\/月人次元]))*(?!\d)/g, ' ');
 
     // (1) 正規化金額:千分位 , 與 "元" 字
     text = text.replace(/\$\s*(\d{1,3}(?:,\d{3})+(?:\.\d+)?)\s*元?/g, (_, n) => '$' + n.replace(/,/g, ''));
@@ -2508,7 +2613,7 @@ function processFile(file) {
                     personMap[key][r.type] = (personMap[key][r.type] || 0) + r.amount;
                     if (r.type === '差旅費') personMap[key].travelCount++;
                 } else {
-                    unknownList.push({ office: r.office, person: '', travelCount: r.type === '差旅費' ? 1 : 0, [r.type]: r.amount, _unknown: true, _sheet: r.sheet });
+                    unknownList.push({ office: r.office, person: '', travelCount: r.type === '差旅費' ? 1 : 0, [r.type]: r.amount, _unknown: true, _sheet: r.sheet, _sourceRow: r.sourceRow || r._sourceRow, _rawNote: r._rawNote, reason: r.reason });
                 }
             });
             const personList = [...Object.values(personMap), ...unknownList].sort((a, b) => a.office.localeCompare(b.office));
@@ -2600,7 +2705,7 @@ function showResult() {
 
     const hasUnknown = r.unknownCount > 0;
     const unknownCol = hasUnknown
-        ? `<div class="stat-col fail"><div class="stat-label">無姓名</div><div class="stat-value">${r.unknownCount}</div><div class="stat-unit">需補</div></div>`
+        ? `<div class="stat-col fail unk-trigger"><div class="stat-label">無姓名</div><div class="stat-value">${r.unknownCount}</div><div class="stat-unit">需補</div></div>`
         : '';
 
     document.getElementById('resultSummary').innerHTML = `
@@ -2862,7 +2967,7 @@ function rerenderWithRecords(records){
     const personMap={}, unknownList=[];
     validRecords.forEach(r=>{
         if(r.person){ const k=r.office+'|'+r.person; if(!personMap[k]) personMap[k]={office:r.office,person:r.person,travelCount:0}; personMap[k][r.type]=(personMap[k][r.type]||0)+r.amount; if(r.type==='差旅費') personMap[k].travelCount++; }
-        else unknownList.push({office:r.office,person:'',travelCount:r.type==='差旅費'?1:0,[r.type]:r.amount,_unknown:true,_sheet:r.sheet});
+        else unknownList.push({office:r.office,person:'',travelCount:r.type==='差旅費'?1:0,[r.type]:r.amount,_unknown:true,_sheet:r.sheet,_sourceRow:r.sourceRow||r._sourceRow,_rawNote:r._rawNote,reason:r.reason});
     });
     const personList=[...Object.values(personMap),...unknownList].sort((a,b)=>a.office.localeCompare(b.office));
     const offices=[...new Set(validRecords.map(r=>r.office))].filter(isValidOffice).sort((a,b)=>(OFFICE_ORDER[a]??999)-(OFFICE_ORDER[b]??999));
@@ -3019,7 +3124,12 @@ function renderPersonTable(filterOffice) {
         const badge = p._unknown
             ? `<span class="badge-recon warn"><span class="mark">▲</span>待補姓名</span>`
             : `<span class="badge-recon ok"><span class="mark">●</span>通過</span>`;
-        return `<tr>${filterOffice ? '' : `<td>${p.office}</td>`}<td>${p.person || '<span style="color:var(--ink-3)">–</span>'}</td><td class="num-cell">${tc || '<span style="color:var(--ink-3)">–</span>'}</td>${cells}<td class="num-cell">${rowTotal.toLocaleString()}</td><td>${badge}</td></tr>`;
+        // v7.2.5: 待補姓名列 hover 顯示來源分頁/列與原文（沿用 setupSrcTip）
+        const escA = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+        const trOpen = p._unknown
+            ? `<tr class="src-row" data-tip-src="${escA(`分頁「${p._sheet}」${p._sourceRow ? `第 ${p._sourceRow} 列` : ''}`)}" data-tip-raw="${escA(p._rawNote || p.reason || '(無原文)')}">`
+            : '<tr>';
+        return `${trOpen}${filterOffice ? '' : `<td>${p.office}</td>`}<td>${p.person || '<span style="color:var(--ink-3)">–</span>'}</td><td class="num-cell">${tc || '<span style="color:var(--ink-3)">–</span>'}</td>${cells}<td class="num-cell">${rowTotal.toLocaleString()}</td><td>${badge}</td></tr>`;
     }).join('');
 
     let grandTotal = Object.values(gt).reduce((s, v) => s + v, 0);
