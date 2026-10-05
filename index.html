@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>差旅明細整理系統 v7.2.5</title>
+    <title>差旅明細整理系統 v7.2.6</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -1028,7 +1028,7 @@
     <header class="app-header">
         <div class="app-header-top">
             <h1>差旅明細整理系統</h1>
-            <span class="app-version">v7.2.5</span>
+            <span class="app-version">v7.2.6</span>
         </div>
         <div class="app-flow">
             會計室信件<span class="sep">›</span>旅費彙整表.xls<span class="sep">›</span>上傳<span class="sep">›</span>選衛生所<span class="sep">›</span>匯出 Excel
@@ -2088,6 +2088,11 @@ function extractTravelList(sheet, sheetName, fileLabel) {
             break;
         }
     }
+    // v7.2.6：印領清冊表頭寫「受領人」(非「領受人」)時 detectSheetType 不走 overtime_detail 而落到這裡——
+    //         分頁名或標題/用途列含「加班」即為加班費（第10次 分頁1「愛滋加班-7」原本全被標差旅費）
+    let titleText = sheetName;
+    for (let r = 0; r < Math.min(nrows, startRow); r++) titleText += getRow(sheet, r).join('');
+    const feeType = titleText.includes('加班') ? '加班費' : '差旅費';
 
     for (let r = startRow; r < nrows; r++) {
         const row = getRow(sheet, r);
@@ -2102,7 +2107,7 @@ function extractTravelList(sheet, sheetName, fileLabel) {
             if (!office.includes('衛生所') && office.includes('區')) office += '衛生所';
             // v6.7.9:直接把整個 persons 丟給 splitPersons(它會自己清日期+識別 N人 群組)
             // _rawNote 保留原始姓名來源,供 hover 追溯
-            pushSplitRecords(records, { office, sheet: sheetName, type: '差旅費', reason: note || sheetName, _rawNote: persons, _sourceRow: r + 1 }, persons, amount);
+            pushSplitRecords(records, { office, sheet: sheetName, type: feeType, reason: note || sheetName, _rawNote: persons, _sourceRow: r + 1 }, persons, amount);
         }
     }
     return records;
